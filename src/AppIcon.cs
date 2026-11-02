@@ -12,8 +12,8 @@ public static class AppIcon
     public const int Win32ResourceId = 32512;
 
     public const string Normal = "Tandem.ico";
-    public const string MonitorLeft = "TrayLinks.ico";   // Monitor beim Privatlaptop (DisplayPort)
-    public const string MonitorRight = "TrayRechts.ico"; // Monitor beim Arbeitslaptop (USB-C)
+    public const string MonitorLeft = "TrayLinks.ico";   // Monitor beim Laptop links (Arbeitslaptop, USB-C)
+    public const string MonitorRight = "TrayRechts.ico"; // Monitor beim Laptop rechts (Privatlaptop, DisplayPort)
 
     const int BaseSize = 32;
     // Größen aus der .ico, die das Hinweisfenster ohne Strecken zeichnen kann.

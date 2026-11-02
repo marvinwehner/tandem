@@ -116,11 +116,17 @@ public static class Tests
         Equal(54u, Profile.Arbeit.Own);
         Equal(0x0Fu, Profile.Arbeit.Other);
         Equal("privat", Profile.Privat.ToArguments());
+        Equal(Side.Left, Profile.Arbeit.Position.Value);
+        Equal(Side.Right, Profile.Arbeit.OtherSide.Value);
+        Equal(Side.Right, Profile.Privat.Position.Value);
+        Equal(Side.Left, Profile.Privat.OtherSide.Value);
 
         Profile custom = Profile.Parse(new[] { "0x11", "18" });
         Equal(0x11u, custom.Own);
         Equal(0x12u, custom.Other);
         Equal("0x11 0x12", custom.ToArguments());
+        False(custom.Position.HasValue);
+        False(custom.OtherSide.HasValue);
 
         Equal("USB-C", Profile.InputName(54));
         Equal("Eingang 99", Profile.InputName(99));
@@ -192,8 +198,9 @@ public static class Tests
 
     static void DescribesTray()
     {
-        Equal(TrayState.MonitorLeft, Tray.StateFor(Profile.DisplayPort));
-        Equal(TrayState.MonitorRight, Tray.StateFor(Profile.UsbC));
+        // Wie auf dem Schreibtisch: links Arbeitslaptop (USB-C), rechts Privatlaptop (DisplayPort).
+        Equal(TrayState.MonitorLeft, Tray.StateFor(Profile.UsbC));
+        Equal(TrayState.MonitorRight, Tray.StateFor(Profile.DisplayPort));
         Equal(TrayState.Unknown, Tray.StateFor(Profile.Hdmi1));
         Equal(TrayState.Unknown, Tray.StateFor(null));
 

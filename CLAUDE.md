@@ -53,6 +53,7 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 
 ## Setup (verifiziert 2026-11-02)
 - Monitor Samsung ViewFinity S9 S95UF (LS49F950U), DDC-Caps-Modell `LEMON25`. VCP 0x60: DP `0x0F`, HDMI 1 `0x11`, HDMI 2 `0x12`, **USB-C `54` (0x36)**. USB-C fehlt in der Caps-Liste, funktioniert aber. DDC geht auch, wenn der eigene Eingang nicht angezeigt wird
+- Aufstellung: links der Arbeitslaptop, in der Mitte der Samsung, rechts der Privatlaptop (`Profile.Position`). Auf dem Privatlaptop liegt der Samsung in Windows bei x = −5120…0 links vom Laptop-Display (2560×1600, primär), sein linker Rand ist der Rand des virtuellen Desktops
 - Privatlaptop (Rolle `privat`, Lenovo 82WM, RTX 4070) an DP, Easy-Switch-Kanal 2. Das USB-Kabel zum Monitor-Hub spielt fürs Umschalten keine Rolle
 - Arbeitslaptop (Rolle `arbeit`) an USB-C, Easy-Switch-Kanal 1
 - Logitech LIFT (PID B031) und ERGO K860 (PID B359) per Bluetooth LE. Logi Options+ läuft parallel und stört nicht
@@ -86,8 +87,8 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - Der Installer wartet auf `Tandem.Bereit` und meldet, wenn der Hintergrundprozess nicht läuft (z. B. Hotkey belegt)
 - Autostart über den Run-Schlüssel statt `.lnk` im Autostart-Ordner (kein COM)
 - Kein Migrationscode für die alte `MonitorSwitch`-Installation, die gab es nur auf dem Privatlaptop
-- Icon „Geteilter Bildschirm“: ein Monitor, links Bernstein `#F5A524` (Privatlaptop, DisplayPort), rechts Blau `#3D7BF5` (Arbeitslaptop, USB-C), Rahmen in den Farben des Hinweisfensters (`#282828`, `#6E6E6E`). Trägt bei 16 px und im hellen wie dunklen Design. Meldungen zeigen es bei Hinweis und Frage, Warnungen behalten das Windows-Warnsymbol
-- Tray-Symbol: Die helle Hälfte zeigt, welcher Laptop den Monitor hat (links DisplayPort/Privatlaptop, rechts USB-C/Arbeitslaptop, auf beiden Laptops gleich). Natives `ContextMenu` statt `ContextMenuStrip` (Windows-11-Optik, skaliert pro Bildschirm). Info als MessageBox statt eigenem Fenster (halb so viel Code, Protokoll im Menü)
+- Icon „Geteilter Bildschirm“: ein Monitor, wie auf dem Schreibtisch links Blau `#3D7BF5` (Arbeitslaptop, USB-C), rechts Bernstein `#F5A524` (Privatlaptop, DisplayPort). Bis 1.2.0 war es andersherum, `design/icon-board.html` zeigt noch die alte Seite, Rahmen in den Farben des Hinweisfensters (`#282828`, `#6E6E6E`). Trägt bei 16 px und im hellen wie dunklen Design. Meldungen zeigen es bei Hinweis und Frage, Warnungen behalten das Windows-Warnsymbol
+- Tray-Symbol: Die helle Hälfte zeigt, welcher Laptop den Monitor hat (links Arbeitslaptop, rechts Privatlaptop, wie auf dem Schreibtisch und auf beiden Laptops gleich). Natives `ContextMenu` statt `ContextMenuStrip` (Windows-11-Optik, skaliert pro Bildschirm). Info als MessageBox statt eigenem Fenster (halb so viel Code, Protokoll im Menü)
 - Zustand fürs Tray: nach eigenem Umschalten aus dem Ergebnis, sonst alle 30 s per DDC, aber nur, wenn an diesem Laptop in den letzten 2 min Eingaben kamen (kein DDC-Verkehr über Nacht). Ins Protokoll nur bei Wechsel
 - Beenden aus dem Tray ohne Rückfrage, danach Hinweis. Beenden während des Umschaltens (Tray oder Installer) wird bis zum Ende aufgeschoben
 - Die Update-Logik im Listener wurde fürs Tray bewusst nicht umgebaut, solange Übergabe und Rückfall am Gerät ungeprüft sind

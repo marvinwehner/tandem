@@ -31,7 +31,7 @@ Der Installer baut `Tandem.exe` aus dem Quellcode (der C#-Compiler gehört zu Wi
 
 ## Tray-Symbol
 
-Solange Tandem läuft, steht ein Symbol im Infobereich der Taskleiste. Die helle Hälfte zeigt, welcher Laptop gerade den Monitor hat: links (Bernstein) der Privatlaptop an DisplayPort, rechts (Blau) der Arbeitslaptop an USB-C. Ist das unklar, zum Beispiel weil der Monitor aus ist, leuchten beide.
+Solange Tandem läuft, steht ein Symbol im Infobereich der Taskleiste. Die helle Hälfte zeigt, welcher Laptop gerade den Monitor hat: links (Blau) der Arbeitslaptop an USB-C, rechts (Bernstein) der Privatlaptop an DisplayPort, so wie sie auf dem Schreibtisch stehen. Ist das unklar, zum Beispiel weil der Monitor aus ist, leuchten beide.
 
 Ein Klick öffnet das Menü:
 
