@@ -84,8 +84,7 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - Kommunikation, Commits und Doku auf Deutsch
 
 ## Offen (Stand 2026-11-02)
-- Erstes Release `v1.1.0` (nach Rückfrage), danach auf beiden Laptops `git pull --tags` und `Installieren.cmd`
-- Privatlaptop: alte Installation von Hand entfernen (`%LOCALAPPDATA%\Programs\MonitorSwitch`, Startmenü „Monitor umschalten“, falls vorhanden `MonitorSwitch.lnk` in `shell:startup` und ein laufender `MonitorSwitch`-Prozess)
+- Release `v1.1.0` ist erstellt, die alte MonitorSwitch-Installation auf dem Privatlaptop entfernt. Tandem ist auf keinem Laptop installiert: `git pull --tags`, dann `Installieren.cmd`
 - Am echten Gerät noch ungeprüft: Hotkey im neuen Hintergrundprozess, Doppeldruck, Autostart nach Anmeldung, Update-Übergabe und Rückfall, `uninstall`
 - Arbeitslaptop: noch nicht installiert, DDC über USB-C von dort aus ungetestet
 - Idee File-Share: vorher PowerToys „Mouse Without Borders“ prüfen (Zwischenablage und Dateien zwischen PCs)
