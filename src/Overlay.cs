@@ -13,6 +13,61 @@ public static class Overlay
     [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(Point pt, uint flags);
     [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);
 
+    const int ResultVisibleMs = 1500;
+
+    // Einmal beim Programmstart, vor dem ersten Fenster: Per-Monitor-DPI (V2), damit der Text auf allen
+    // Bildschirmen scharf und gleich groß ist.
+    public static void InitDpi()
+    {
+        if (!SetProcessDpiAwarenessContext(new IntPtr(-4))) SetProcessDPIAware();
+    }
+
+    // Zeigt text auf allen Bildschirmen, führt work im Hintergrund aus, zeigt dessen Ergebnis kurz an,
+    // schließt und ruft dann done auf. Ohne work bleibt text stehen. Nur auf dem UI-Thread aufrufen.
+    public static void Show(string text, Func<string> work, Action done)
+    {
+        var forms = new List<OsdForm>();
+        foreach (Screen screen in Screen.AllScreens)
+        {
+            var f = new OsdForm(text, screen);
+            f.Show();
+            forms.Add(f);
+        }
+        var worker = new Thread(() =>
+        {
+            string result;
+            try { result = work == null ? text : work(); }
+            catch (Exception ex)
+            {
+                Log.Error("Fehler im Hintergrund", ex);
+                result = "Fehler: " + ex.Message;
+            }
+            forms[0].BeginInvoke((Action)(() =>
+            {
+                foreach (var f in forms) f.SetText(result);
+                var timer = new System.Windows.Forms.Timer();
+                timer.Interval = ResultVisibleMs;
+                timer.Tick += (s, e) =>
+                {
+                    timer.Dispose();
+                    foreach (var f in forms) f.Close();
+                    if (done != null) done();
+                };
+                timer.Start();
+            }));
+        });
+        worker.IsBackground = true;
+        worker.Start();
+    }
+
+    // Wie Show, aber mit eigener Message-Loop, für einzelne Kommandos ohne Hintergrundprozess.
+    public static void Run(string text, Func<string> work)
+    {
+        var context = new ApplicationContext();
+        Show(text, work, context.ExitThread);
+        Application.Run(context);
+    }
+
     // Skalierung des Bildschirms (1.25 = 125 %). Laptop-Panel und Samsung sind unterschiedlich skaliert.
     static float ScaleOf(Screen screen)
     {
@@ -21,7 +76,7 @@ public static class Overlay
         return GetDpiForMonitor(monitor, 0, out dpiX, out dpiY) == 0 ? dpiX / 96f : 1f;
     }
 
-    class OsdForm : Form
+    sealed class OsdForm : Form
     {
         readonly Screen screen;
         readonly float scale;
@@ -74,42 +129,5 @@ public static class Overlay
                 return cp;
             }
         }
-    }
-
-    // Zeigt <text> auf allen Bildschirmen, führt <work> im Hintergrund aus, zeigt dessen Ergebnis kurz an und schließt.
-    public static void Run(string text, Func<string> work)
-    {
-        // Per-Monitor-DPI (V2), damit der Text auf beiden Bildschirmen scharf und gleich groß ist.
-        if (!SetProcessDpiAwarenessContext(new IntPtr(-4))) SetProcessDPIAware();
-        var forms = new List<OsdForm>();
-        foreach (Screen screen in Screen.AllScreens)
-        {
-            var f = new OsdForm(text, screen);
-            f.Show();
-            forms.Add(f);
-        }
-        var context = new ApplicationContext();
-        var worker = new Thread(() =>
-        {
-            string result;
-            try { result = work(); }
-            catch (Exception ex) { result = "Fehler: " + ex.Message; }
-            forms[0].BeginInvoke((Action)(() =>
-            {
-                foreach (var f in forms) f.SetText(result);
-                var timer = new System.Windows.Forms.Timer();
-                timer.Interval = 1500;
-                timer.Tick += (s, e) =>
-                {
-                    timer.Stop();
-                    foreach (var f in forms) f.Close(); // im Hintergrundprozess läuft das Programm danach weiter
-                    context.ExitThread();
-                };
-                timer.Start();
-            }));
-        });
-        worker.IsBackground = true;
-        worker.Start();
-        Application.Run(context);
     }
 }
