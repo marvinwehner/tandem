@@ -3,7 +3,7 @@
 Zwei Laptops an einem Monitor. `Tandem.exe` schickt per Strg+Alt+K Monitor (DDC/CI) und Logitech-Bluetooth-Geräte (HID++) zum anderen Laptop und aktualisiert sich selbst von GitHub. Bedienung und Installation: [README.md](README.md).
 
 ## Aufbau
-Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`, `Updater`) → Oberfläche (`Program`, `Listener`, `Hotkey`, `Overlay`, `Dialog`). Untere Ebenen kennen keine UI, Meldungen zeigt die Oberfläche. Querschnitt: `Profile`, `AppVersion`, `Log`.
+Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`, `Updater`) → Oberfläche (`Program`, `Listener`, `Hotkey`, `Overlay`, `Dialog`). Untere Ebenen kennen keine UI, Meldungen zeigt die Oberfläche. Querschnitt: `Profile`, `AppVersion`, `AppIcon`, `Log`.
 - `src/Program.cs`: Einstieg, `Command.Parse` prüft die Kommandozeile vollständig, Abläufe für install/uninstall mit Meldungen, zentrale Fehlerbehandlung
 - `src/Profile.cs`: Rollen `privat`/`arbeit` mit eigenem und anderem Monitoreingang, Eingangsnamen
 - `src/Switcher.cs`: Ablauf beim Umschalten (DDC prüfen, Geräte, Monitor), `ChooseTarget` als reine Regel, `SwitchResult`
@@ -13,8 +13,10 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - `src/Hotkey.cs`: Strg+Alt+K über ein unsichtbares Nachrichtenfenster, `WaitForRelease` vor dem Gerätewechsel
 - `src/Installer.cs`: Dateien, Autostart `HKCU\...\Run\Tandem`, Startmenü „Tandem umschalten“, Prozesse beenden, Sicherung zurückholen. Ordner `%LOCALAPPDATA%\Programs\Tandem`
 - `src/Updater.cs`: Release prüfen (`ShouldOffer`), Quellcode laden, bauen; `src/AppVersion.cs`: Version parsen und vergleichen
-- `src/Overlay.cs` (Hinweisfenster, Per-Monitor-DPI V2), `src/Dialog.cs` (MessageBox im Vordergrund), `src/Log.cs` (`tandem.log`)
-- `src/tandem.rsp`: csc-Optionen und Quellen, gemeinsam für `build.cmd`, `test.cmd` und den Updater
+- `src/Overlay.cs` (Hinweisfenster mit Icon, Per-Monitor-DPI V2), `src/Dialog.cs` (MessageBoxIndirect im Vordergrund, Tandem-Icon bei Hinweis und Frage), `src/Log.cs` (`tandem.log`)
+- `src/AppIcon.cs`: Icon für Hinweisfenster (aus der Ressource `Tandem.ico`, je Größe einmal geladen) und die Win32-Ressourcen-ID 32512 für Meldungen
+- `src/tandem.ico`: App-Icon „Geteilter Bildschirm“ in 16–256 px, erzeugt von `tools/IconGenerator.cs` über `tools\icon.cmd`. Entwurf und Begründung: `design/icon-board.html`
+- `src/tandem.rsp`: csc-Optionen, Icon (`/win32icon` und `/resource`) und Quellen, gemeinsam für `build.cmd`, `test.cmd` und den Updater
 - `tests/Tests.cs`: Tests ohne Framework für die reine Logik und den Build
 - `Installieren.cmd`: fragt nach der Rolle, `build.cmd`, dann `Tandem.exe install <rolle>`
 
@@ -27,7 +29,8 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - `listen` nicht selbst starten: Es belegt Strg+Alt+K, ein Druck des Users schickt dann die Geräte weg
 - Logitech-Umschaltung geht nur, wenn die Geräte mit diesem Laptop verbunden sind. Danach sind sie weg, zurück per Easy-Switch-Taste
 - Update-Pfad ohne Release testen: kleines Probe-Programm mit `csc /target:exe /main:Probe /out:... @src\tandem.rsp Probe.cs` aus dem Repo-Ordner, das ein Branch-Archiv (`https://github.com/marvinwehner/tandem/archive/refs/heads/<branch>.zip`) lädt, entpackt und mit `Updater.Build` baut. So am 2026-11-02 verifiziert
-- Overlay ohne Umschalten testen: kleines Testprogramm mit `Overlay.Run(...)` bauen und mit `Graphics.CopyFromScreen` Screenshots machen
+- Overlay und Meldungen ohne Umschalten testen: Probe-Programm wie oben mit `Overlay.Run(...)` bzw. `Dialog.*`, Fenster per `PrintWindow(hwnd, hdc, 2)` als Bild speichern und MessageBoxen per `PostMessage` schließen. `CopyFromScreen` liefert nur Schwarz, wenn der Bildschirm gesperrt ist (User per Fernzugriff)
+- Ein Probe-Programm mit `@src\tandem.rsp` schreibt bei Fehlern ins echte `%LOCALAPPDATA%\Programs\Tandem\tandem.log`. Danach aufräumen, wenn Tandem dort nicht installiert ist
 
 ## Release
 1. Auf `main` gemergt, `test.cmd` grün
@@ -39,8 +42,9 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - Nur C# 5 (csc des .NET Framework): keine String-Interpolation, kein `?.`, kein `out var`, keine Tuples, kein `nameof`, keine Getter-only-Properties (`{ get; private set; }` nehmen)
 - Keine externen Abhängigkeiten, nur Windows-Bordmittel
 - Code-Kommentare und UI-Texte auf Deutsch, Bezeichner englisch
-- Neue Quelldateien gehören nach `src/`, die rsp nimmt `src\*.cs` automatisch mit. Neue Referenzen in `src\tandem.rsp` eintragen
-- `.cmd`-Dateien mit CRLF (`.gitattributes`), Texte darin ohne Umlaute
+- Neue Quelldateien gehören nach `src/`, die rsp nimmt `src\*.cs` automatisch mit. Neue Referenzen in `src\tandem.rsp` eintragen. Werkzeuge mit eigenem `Main`, die nicht in die exe gehören, liegen in `tools/`
+- `.cmd`-Dateien mit CRLF (`.gitattributes`), Texte darin ohne Umlaute. `.ico` ist binär
+- Icon ändern: `tools\IconGenerator.cs` anpassen, `tools\icon.cmd` ausführen, `src\tandem.ico` committen. Bis 48 px sind die Formen von Hand aufs Pixelraster gesetzt
 - Installer und Autostart nicht selbst ausführen: Der Auto-Mode blockiert das als Persistenz, der User startet `Installieren.cmd` selbst
 
 ## Setup (verifiziert 2026-11-02)
@@ -59,6 +63,8 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - GitHub: `/releases/latest` leitet auf `/releases/tag/<tag>` weiter, ohne Release auf `/releases`. Das Archiv `archive/refs/tags/<tag>.zip` enthält genau einen Ordner `tandem-<version>`
 - Eine laufende exe lässt sich umbenennen, aber nicht überschreiben. Darauf beruht das Update (`Tandem.exe` → `.bak`, `.new` → `Tandem.exe`)
 - Der Task-Manager merkt sich abgeschaltete Autostarts unter `HKCU\...\Explorer\StartupApproved\Run` (erstes Byte 02 an, 03 aus)
+- csc legt das Icon aus `/win32icon` als Gruppe 32512 ab (`AppIcon.Win32ResourceId`, Test prüft das). `System.Drawing.Icon` ignoriert PNG-Einträge in einer .ico, deshalb sind alle Größen bis 64 px als BMP gespeichert, nur 256 als PNG
+- Zeigen Startmenü oder Explorer nach einem Update noch das alte Icon, liegt das am Icon-Cache von Windows (`ie4uinit.exe -show`), nicht am Code
 - Git Credential Manager zeigt eine Kontoauswahl, sobald mehrere GitHub-Konten gespeichert sind. Auf dem Privatlaptop behoben (altes Konto per `git credential-manager github logout <konto>` abgemeldet, `git config --global credential.https://github.com.username marvinwehner`). Git aus Programmen oder Skripten nur mit `GCM_INTERACTIVE=never` und `GIT_TERMINAL_PROMPT=0` aufrufen, sonst erscheinen Fenster oder der Aufruf hängt
 
 ## Entscheidungen (2026-11-02)
@@ -73,6 +79,7 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - Der Installer wartet auf `Tandem.Bereit` und meldet, wenn der Hintergrundprozess nicht läuft (z. B. Hotkey belegt)
 - Autostart über den Run-Schlüssel statt `.lnk` im Autostart-Ordner (kein COM)
 - Kein Migrationscode für die alte `MonitorSwitch`-Installation, die gab es nur auf dem Privatlaptop
+- Icon „Geteilter Bildschirm“: ein Monitor, links Bernstein `#F5A524` (Privatlaptop, DisplayPort), rechts Blau `#3D7BF5` (Arbeitslaptop, USB-C), Rahmen in den Farben des Hinweisfensters (`#282828`, `#6E6E6E`). Trägt bei 16 px und im hellen wie dunklen Design. Meldungen zeigen es bei Hinweis und Frage, Warnungen behalten das Windows-Warnsymbol
 
 ## Zusammenarbeit
 - Der User hat Claude erlaubt, diese Datei und die README.md selbstständig aktuell zu halten. Bei jeder Änderung prüfen, ob die Doku betroffen ist, und sie im selben Commit anpassen
@@ -87,4 +94,6 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - Release `v1.1.0` ist erstellt, die alte MonitorSwitch-Installation auf dem Privatlaptop entfernt. Tandem ist auf keinem Laptop installiert: `git pull --tags`, dann `Installieren.cmd`
 - Am echten Gerät noch ungeprüft: Hotkey im neuen Hintergrundprozess, Doppeldruck, Autostart nach Anmeldung, Update-Übergabe und Rückfall, `uninstall`
 - Arbeitslaptop: noch nicht installiert, DDC über USB-C von dort aus ungetestet
+- Idee Tray-Icon (Wunsch des Users): Das Icon kann dort zeigen, welcher Laptop den Monitor hat, die passende Hälfte leuchtet. Entwurf in `design/icon-board.html`
+- Meldungen zeigen Knöpfe im alten Windows-Stil, weil `MessageBoxIndirect` ohne Visual-Styles-Manifest läuft. War vorher schon so
 - Idee File-Share: vorher PowerToys „Mouse Without Borders“ prüfen (Zwischenablage und Dateien zwischen PCs)

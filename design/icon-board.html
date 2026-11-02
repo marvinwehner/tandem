@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tandem – Icon-Ideen</title>
+<style>
+  :root {
+    --osd: #282828;        /* Hintergrund des Tandem-Hinweisfensters */
+    --osd-rand: #6E6E6E;   /* Rahmen des Hinweisfensters */
+    --bernstein: #F5A524;  /* Privatlaptop, DisplayPort */
+    --blau: #3D7BF5;       /* Arbeitslaptop, USB-C */
+    --hell: #F3F3F3;       /* Windows 11, helles Design */
+    --dunkel: #202020;     /* Windows 11, dunkles Design */
+    --text: #1B1B1B;
+    --leise: #5F5F5F;
+    --linie: #DCDCDC;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--hell);
+    color: var(--text);
+    font: 15px/1.55 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 1060px; margin: 0 auto; padding: 48px 28px 72px; }
+  h1, h2, h3 { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 0; }
+  h1 { font-size: 44px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; }
+  h2 { font-size: 22px; line-height: 1.25; font-weight: 600; margin-bottom: 14px; }
+  h3 { font-size: 17px; font-weight: 600; }
+  p { margin: 0 0 12px; max-width: 64ch; }
+  section { margin-top: 56px; }
+
+  /* Einstieg mit dem empfohlenen Icon zum Anklicken */
+  .intro { display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; align-items: center; }
+  .intro p { font-size: 17px; color: var(--leise); margin-top: 16px; }
+  .buehne {
+    background: linear-gradient(160deg, #2C3E5C 0%, #1D2738 100%);
+    border-radius: 14px;
+    padding: 36px 24px 28px;
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+  }
+  .schalter {
+    background: none; border: 0; padding: 6px; cursor: pointer; border-radius: 18px;
+  }
+  .schalter:focus-visible { outline: 3px solid #FFFFFF; outline-offset: 4px; }
+  .schalter svg { width: 176px; height: 176px; display: block; }
+  .scheibe { transition: opacity 260ms ease; }
+  .an-links .rechts, .an-rechts .links { opacity: 0.28; }
+  .osd {
+    background: rgba(40, 40, 40, 0.95);
+    border: 1px solid var(--osd-rand);
+    color: #FFFFFF;
+    font: 19px/1.35 "Segoe UI", system-ui, sans-serif;
+    padding: 14px 26px;
+    min-width: 230px; text-align: center;
+  }
+  .buehne small { color: #B9C3D3; font-size: 13px; }
+
+  /* Wo das Icon auftaucht */
+  .orte { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 1px solid var(--linie); }
+  .ort { padding: 14px 18px 0 0; }
+  .ort b { display: block; font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ort span { color: var(--leise); font-size: 14px; }
+
+  /* Ideen im Vergleich */
+  .idee {
+    display: grid; grid-template-columns: 250px 1fr 1fr; gap: 20px;
+    padding: 22px 20px; border-top: 1px solid var(--linie); align-items: center;
+  }
+  .idee.empfohlen { background: #FFFFFF; border-top-color: var(--blau); box-shadow: inset 4px 0 0 var(--blau); }
+  .idee .marke { font-size: 13px; color: var(--blau); font-weight: 600; margin-left: 8px; }
+  .idee p { font-size: 14px; color: var(--leise); margin: 6px 0 0; }
+  .idee .urteil { margin-top: 10px; font-size: 13.5px; }
+  .idee .urteil div { margin-top: 3px; }
+  .leiste {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 16px 18px 10px; border-radius: 8px; min-height: 112px;
+  }
+  .leiste.hell { background: #FFFFFF; border: 1px solid var(--linie); }
+  .idee.empfohlen .leiste.hell { border-color: #E9E9E9; }
+  .leiste.dunkel { background: var(--dunkel); }
+  .groesse { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .groesse svg { display: block; }
+  .groesse span { font-size: 12px; color: #8A8A8A; font-variant-numeric: tabular-nums; }
+  .spaltenkopf { display: grid; grid-template-columns: 250px 1fr 1fr; gap: 20px; font-size: 13px; color: var(--leise); padding: 0 20px 8px; }
+
+  /* Task-Manager bei 16 px */
+  .taskmanager { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .tm { border-radius: 8px; overflow: hidden; font: 12.5px/1 "Segoe UI", system-ui, sans-serif; }
+  .tm.hell { background: #FFFFFF; border: 1px solid var(--linie); color: #1B1B1B; }
+  .tm.dunkel { background: #1C1C1C; color: #E4E4E4; }
+  .tm .kopf, .tm .zeile { display: grid; grid-template-columns: 1fr 120px 92px; align-items: center; padding: 0 14px; }
+  .tm .kopf { height: 34px; color: #8A8A8A; }
+  .tm.hell .kopf { border-bottom: 1px solid #ECECEC; }
+  .tm.dunkel .kopf { border-bottom: 1px solid #2E2E2E; }
+  .tm .zeile { height: 32px; }
+  .tm .zeile .name { display: flex; align-items: center; gap: 10px; }
+  .tm .zeile svg { width: 16px; height: 16px; flex: none; }
+  .tm .zeile em { font-style: normal; color: #8A8A8A; }
+
+  /* Später: Tray-Icon in der Taskleiste */
+  .tray { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 6px; }
+  .leiste-tb { border-radius: 8px; padding: 18px 18px 14px; }
+  .leiste-tb.hell { background: #FFFFFF; border: 1px solid var(--linie); }
+  .leiste-tb.dunkel { background: var(--dunkel); color: #E4E4E4; }
+  .taskbar {
+    display: flex; align-items: center; justify-content: flex-end; gap: 14px;
+    height: 44px; padding: 0 14px; border-radius: 6px; font: 12px/1.2 "Segoe UI", system-ui, sans-serif;
+  }
+  .leiste-tb.hell .taskbar { background: #EEEEEE; color: #1B1B1B; }
+  .leiste-tb.dunkel .taskbar { background: #1C1C1C; color: #E4E4E4; border: 1px solid #2E2E2E; }
+  .taskbar .platz { width: 16px; height: 16px; border-radius: 3px; background: #B5B5B5; opacity: .55; }
+  .taskbar svg { width: 16px; height: 16px; display: block; }
+  .taskbar .uhr { text-align: right; font-variant-numeric: tabular-nums; }
+  .zustaende { display: flex; gap: 22px; margin-top: 12px; font-size: 13px; color: #8A8A8A; }
+  .zustaende div { display: flex; align-items: center; gap: 8px; }
+  .zustaende svg { width: 16px; height: 16px; }
+
+  /* Empfehlung und Umsetzung */
+  .zweispaltig { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  ol { margin: 0; padding-left: 20px; max-width: 60ch; }
+  ol li { margin-bottom: 10px; }
+  code { font-family: "Cascadia Code", Consolas, monospace; font-size: 13px; background: #E8E8E8; padding: 1px 5px; border-radius: 4px; }
+  .farben { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .farbe { display: flex; align-items: center; gap: 10px; font-size: 13.5px; min-width: 220px; }
+  .farbe i { width: 34px; height: 34px; border-radius: 8px; flex: none; }
+  .farbe span { color: var(--leise); display: block; font-size: 12.5px; }
+
+  @media (max-width: 860px) {
+    .intro, .zweispaltig, .taskmanager, .tray { grid-template-columns: 1fr; }
+    .orte { grid-template-columns: 1fr 1fr; }
+    .idee, .spaltenkopf { grid-template-columns: 1fr; }
+    .spaltenkopf { display: none; }
+    h1 { font-size: 34px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scheibe { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Die Formen. Große Fassung für 32 px und mehr, vereinfachte Fassung für 24 px und weniger.
+     Feste Farben, weil eine .ico nicht zwischen hellem und dunklem Design wechselt. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="a-gross" viewBox="0 0 64 64">
+      <path d="M28 44h8v8h9.5a2.5 2.5 0 0 1 0 5h-27a2.5 2.5 0 0 1 0-5H28z" fill="#282828" stroke="#6E6E6E" stroke-width="2" stroke-linejoin="round"/>
+      <rect x="5" y="8" width="54" height="38" rx="6" fill="#282828" stroke="#6E6E6E" stroke-width="2"/>
+      <rect x="10" y="13" width="21" height="28" rx="2.5" fill="#F5A524"/>
+      <rect x="33" y="13" width="21" height="28" rx="2.5" fill="#3D7BF5"/>
+    </symbol>
+    <symbol id="a-klein" viewBox="0 0 16 16">
+      <rect x="7" y="11.5" width="2" height="2" fill="#6E6E6E"/>
+      <rect x="4" y="13.5" width="8" height="2" rx="1" fill="#6E6E6E"/>
+      <rect x="0.5" y="1.5" width="15" height="10.5" rx="2" fill="#282828" stroke="#6E6E6E"/>
+      <rect x="2" y="3" width="5.5" height="7.5" rx="0.75" fill="#F5A524"/>
+      <rect x="8.5" y="3" width="5.5" height="7.5" rx="0.75" fill="#3D7BF5"/>
+    </symbol>
+
+    <symbol id="a-tray-links" viewBox="0 0 16 16">
+      <rect x="7" y="11.5" width="2" height="2" fill="#6E6E6E"/>
+      <rect x="4" y="13.5" width="8" height="2" rx="1" fill="#6E6E6E"/>
+      <rect x="0.5" y="1.5" width="15" height="10.5" rx="2" fill="#282828" stroke="#6E6E6E"/>
+      <rect x="2" y="3" width="5.5" height="7.5" rx="0.75" fill="#F5A524"/>
+      <rect x="8.5" y="3" width="5.5" height="7.5" rx="0.75" fill="#3D7BF5" opacity="0.25"/>
+    </symbol>
+    <symbol id="a-tray-rechts" viewBox="0 0 16 16">
+      <rect x="7" y="11.5" width="2" height="2" fill="#6E6E6E"/>
+      <rect x="4" y="13.5" width="8" height="2" rx="1" fill="#6E6E6E"/>
+      <rect x="0.5" y="1.5" width="15" height="10.5" rx="2" fill="#282828" stroke="#6E6E6E"/>
+      <rect x="2" y="3" width="5.5" height="7.5" rx="0.75" fill="#F5A524" opacity="0.25"/>
+      <rect x="8.5" y="3" width="5.5" height="7.5" rx="0.75" fill="#3D7BF5"/>
+    </symbol>
+
+    <symbol id="b-gross" viewBox="0 0 64 64">
+      <circle cx="16" cy="42" r="11" fill="none" stroke="#F5A524" stroke-width="5"/>
+      <circle cx="48" cy="42" r="11" fill="none" stroke="#3D7BF5" stroke-width="5"/>
+      <path d="M16 42 25 21h14l9 21" fill="none" stroke="#282828" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M21 16h8M35 16h8" stroke="#282828" stroke-width="4" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="b-klein" viewBox="0 0 16 16">
+      <circle cx="4.2" cy="10.6" r="3.4" fill="none" stroke="#F5A524" stroke-width="1.6"/>
+      <circle cx="11.8" cy="10.6" r="3.4" fill="none" stroke="#3D7BF5" stroke-width="1.6"/>
+      <path d="M4.2 10.6 6.4 5.2h3.2l2.2 5.4" fill="none" stroke="#282828" stroke-width="1.3" stroke-linejoin="round"/>
+      <path d="M5.2 3.6h2.2M8.6 3.6h2.2" stroke="#282828" stroke-width="1.3" stroke-linecap="round"/>
+    </symbol>
+
+    <symbol id="c-gross" viewBox="0 0 64 64">
+      <rect x="6" y="8" width="24" height="17" rx="4" fill="#F5A524"/>
+      <rect x="34" y="8" width="24" height="17" rx="4" fill="#3D7BF5"/>
+      <rect x="26" y="21" width="12" height="35" rx="4" fill="#282828"/>
+    </symbol>
+    <symbol id="c-klein" viewBox="0 0 16 16">
+      <rect x="1" y="1.5" width="6.5" height="4.5" rx="1" fill="#F5A524"/>
+      <rect x="8.5" y="1.5" width="6.5" height="4.5" rx="1" fill="#3D7BF5"/>
+      <rect x="6" y="5" width="4" height="10" rx="1" fill="#282828"/>
+    </symbol>
+
+    <symbol id="d-gross" viewBox="0 0 64 64">
+      <path d="M28 44h8v8h9.5a2.5 2.5 0 0 1 0 5h-27a2.5 2.5 0 0 1 0-5H28z" fill="#282828" stroke="#6E6E6E" stroke-width="2" stroke-linejoin="round"/>
+      <rect x="5" y="8" width="54" height="38" rx="6" fill="#282828" stroke="#6E6E6E" stroke-width="2"/>
+      <path d="M15 21h28M37 15l7 6-7 6" fill="none" stroke="#F5A524" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M49 33H21M27 27l-7 6 7 6" fill="none" stroke="#3D7BF5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+    <symbol id="d-klein" viewBox="0 0 16 16">
+      <rect x="7" y="11.5" width="2" height="2" fill="#6E6E6E"/>
+      <rect x="4" y="13.5" width="8" height="2" rx="1" fill="#6E6E6E"/>
+      <rect x="0.5" y="1.5" width="15" height="10.5" rx="2" fill="#282828" stroke="#6E6E6E"/>
+      <path d="M3 5h8.5M9.8 3.4 11.5 5 9.8 6.6" fill="none" stroke="#F5A524" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M13 8.5H4.5M6.2 6.9 4.5 8.5l1.7 1.6" fill="none" stroke="#3D7BF5" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<main>
+  <header class="intro">
+    <div>
+      <h1>Ein Icon für Tandem</h1>
+      <p>Vier Ideen, jeweils in den Größen, in denen Windows sie wirklich zeigt. Weil Tandem bisher kein Fenster und kein Tray-Icon hat, sieht man das Icon fast nur klein: im Task-Manager, in der Autostart-Liste und im Startmenü. Es muss also bei 16 Pixeln funktionieren.</p>
+    </div>
+    <div class="buehne">
+      <button class="schalter" id="schalter" type="button" aria-label="Icon umschalten wie mit Strg+Alt+K">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <path d="M28 44h8v8h9.5a2.5 2.5 0 0 1 0 5h-27a2.5 2.5 0 0 1 0-5H28z" fill="#282828" stroke="#6E6E6E" stroke-width="2" stroke-linejoin="round"/>
+          <rect x="5" y="8" width="54" height="38" rx="6" fill="#282828" stroke="#6E6E6E" stroke-width="2"/>
+          <rect class="scheibe links" x="10" y="13" width="21" height="28" rx="2.5" fill="#F5A524"/>
+          <rect class="scheibe rechts" x="33" y="13" width="21" height="28" rx="2.5" fill="#3D7BF5"/>
+        </svg>
+      </button>
+      <div class="osd" id="osd" aria-live="polite">Geteilter Bildschirm</div>
+      <small>Meine Empfehlung. Klick aufs Icon schaltet um wie Strg+Alt+K.</small>
+    </div>
+  </header>
+
+  <section>
+    <h2>Wo das Icon auftaucht</h2>
+    <div class="orte">
+      <div class="ort"><b>16 px</b><span>Task-Manager: Prozesse und Autostart-Apps</span></div>
+      <div class="ort"><b>24 px</b><span>Einstellungen › Apps › Autostart, Startmenü-Suche</span></div>
+      <div class="ort"><b>32 px</b><span>Startmenü „Tandem umschalten“ unter Alle Apps</span></div>
+      <div class="ort"><b>256 px</b><span>Explorer, große Symbole im Installationsordner</span></div>
+    </div>
+    <p style="margin-top:16px;color:var(--leise);font-size:14px">Bei 125 oder 150 % Skalierung nimmt Windows statt 16 die 20- oder 24-Pixel-Fassung. Die Vorschau unten zeigt die Größen in CSS-Pixeln, auf einem hochauflösenden Bildschirm also etwas schärfer als in echt.</p>
+  </section>
+
+  <section>
+    <h2>Die vier Ideen</h2>
+    <div class="spaltenkopf"><span></span><span>Helles Windows-Design</span><span>Dunkles Windows-Design</span></div>
+
+    <article class="idee empfohlen" data-idee="a">
+      <div>
+        <h3>Geteilter Bildschirm<span class="marke">Empfehlung</span></h3>
+        <p>Ein Monitor, dessen Bild in zwei Hälften geteilt ist: links der Privatlaptop, rechts der Arbeitslaptop.</p>
+        <div class="urteil">
+          <div><b>Stark:</b> sagt sofort „ein Monitor, zwei Quellen“. Die dunkle Fassung trägt auf hellem und dunklem Grund.</div>
+          <div><b>Schwach:</b> zeigt das Umschalten nicht, nur die zwei Seiten.</div>
+        </div>
+      </div>
+      <div class="leiste hell"></div>
+      <div class="leiste dunkel"></div>
+    </article>
+
+    <article class="idee" data-idee="b">
+      <div>
+        <h3>Tandem-Rad</h3>
+        <p>Zwei Räder, ein Rahmen, zwei Sättel. Spielt mit dem Namen: zwei fahren, einer lenkt.</p>
+        <div class="urteil">
+          <div><b>Stark:</b> eigenständig, mit Charme, verwechselt man mit nichts.</div>
+          <div><b>Schwach:</b> bei 16 px eher eine Brille. Der dunkle Rahmen verschwindet im dunklen Design, sagt nichts über Monitore.</div>
+        </div>
+      </div>
+      <div class="leiste hell"></div>
+      <div class="leiste dunkel"></div>
+    </article>
+
+    <article class="idee" data-idee="c">
+      <div>
+        <h3>T aus zwei Hälften</h3>
+        <p>Ein T, dessen Querbalken aus zwei Teilen besteht, der Stamm hält sie zusammen wie ein Monitorfuß.</p>
+        <div class="urteil">
+          <div><b>Stark:</b> klares Zeichen, sehr gut lesbar bei 16 px, wirkt wie ein Logo.</div>
+          <div><b>Schwach:</b> abstrakt, man muss die Idee erklärt bekommen. Stamm geht im dunklen Design unter.</div>
+        </div>
+      </div>
+      <div class="leiste hell"></div>
+      <div class="leiste dunkel"></div>
+    </article>
+
+    <article class="idee" data-idee="d">
+      <div>
+        <h3>Monitor mit Wechselpfeilen</h3>
+        <p>Ein Monitor mit zwei gegenläufigen Pfeilen, die naheliegende Lösung.</p>
+        <div class="urteil">
+          <div><b>Stark:</b> selbsterklärend, zumindest groß.</div>
+          <div><b>Schwach:</b> sieht aus wie jedes KVM- oder Display-Tool, und die Pfeile verschwimmen bei 16 px.</div>
+        </div>
+      </div>
+      <div class="leiste hell"></div>
+      <div class="leiste dunkel"></div>
+    </article>
+  </section>
+
+  <section>
+    <h2>Der Härtetest: Task-Manager bei 16 px</h2>
+    <p style="color:var(--leise)">So sähe die Liste „Autostart-Apps“ aus. Hier entscheidet sich, ob man Tandem auf einen Blick findet.</p>
+    <div class="taskmanager">
+      <div class="tm hell" data-tm></div>
+      <div class="tm dunkel" data-tm></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Später als Tray-Icon</h2>
+    <p style="color:var(--leise)">Der geteilte Bildschirm kann dort den Zustand zeigen: Es leuchtet die Hälfte des Laptops, der gerade den Monitor hat. Den Zustand kennt Tandem nach jedem Umschalten und kann ihn per DDC nachlesen. Auf dem Privatlaptop hieße links „Monitor ist hier“, rechts „Monitor ist drüben“.</p>
+    <div class="tray">
+      <div class="leiste-tb hell">
+        <div class="taskbar"><span class="platz"></span><span class="platz"></span><svg aria-hidden="true"><use href="#a-tray-links"/></svg><span class="uhr">18:42<br>02.11.2026</span></div>
+        <div class="zustaende">
+          <div><svg aria-hidden="true"><use href="#a-tray-links"/></svg>Monitor beim Privatlaptop</div>
+          <div><svg aria-hidden="true"><use href="#a-tray-rechts"/></svg>beim Arbeitslaptop</div>
+        </div>
+      </div>
+      <div class="leiste-tb dunkel">
+        <div class="taskbar"><span class="platz"></span><span class="platz"></span><svg aria-hidden="true"><use href="#a-tray-rechts"/></svg><span class="uhr">18:42<br>02.11.2026</span></div>
+        <div class="zustaende">
+          <div><svg aria-hidden="true"><use href="#a-tray-links"/></svg>Monitor beim Privatlaptop</div>
+          <div><svg aria-hidden="true"><use href="#a-tray-rechts"/></svg>beim Arbeitslaptop</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="zweispaltig">
+    <div>
+      <h2>Warum der geteilte Bildschirm</h2>
+      <p>Er erzählt genau, was Tandem tut: ein Monitor, zwei Laptops. Die dunkle Fassung mit grauem Rand stammt direkt aus dem Hinweisfenster, das beim Umschalten erscheint, Icon und Overlay sehen also nach derselben App aus.</p>
+      <p>Er übersteht die 16 Pixel, weil er aus großen Farbflächen besteht statt aus Linien, und er funktioniert im hellen wie im dunklen Design. Das ist wichtig, denn eine .ico kann nicht mit dem Design wechseln.</p>
+      <p>Die Farben haben eine Bedeutung: Bernstein für den Privatlaptop an DisplayPort, Blau für den Arbeitslaptop an USB-C. Später könnte das Hinweisfenster dieselben Farben zeigen.</p>
+    </div>
+    <div>
+      <h2>So käme es in die App</h2>
+      <ol>
+        <li>Eine <code>src\tandem.ico</code> mit 16, 20, 24, 32, 48 und 256 px. Ab 24 px abwärts die vereinfachte Form mit pixelgenauen Kanten.</li>
+        <li>Erzeugt von einem kleinen C#-Skript mit System.Drawing aus denselben Formen, also ohne fremde Werkzeuge. Die .ico liegt danach als kleine Datei im Repo.</li>
+        <li>In <code>src\tandem.rsp</code> kommt <code>/win32icon:src\tandem.ico</code>, dann baut csc das Icon in die exe ein, auch beim Update.</li>
+        <li>Startmenü-Eintrag und Autostart-Liste übernehmen das Icon automatisch aus der exe. Am übrigen Code ändert sich nichts.</li>
+      </ol>
+      <div class="farben">
+        <div class="farbe"><i style="background:#F5A524"></i><div>Bernstein #F5A524<span>Privatlaptop, DisplayPort</span></div></div>
+        <div class="farbe"><i style="background:#3D7BF5"></i><div>Blau #3D7BF5<span>Arbeitslaptop, USB-C</span></div></div>
+        <div class="farbe"><i style="background:#282828;border:1px solid #6E6E6E"></i><div>Grau #282828<span>Hinweisfenster, Hintergrund</span></div></div>
+        <div class="farbe"><i style="background:#6E6E6E"></i><div>Grau #6E6E6E<span>Hinweisfenster, Rahmen</span></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  // Größenleisten und Task-Manager-Zeilen aus den Symbolen füllen.
+  var groessen = [64, 48, 32, 24, 16];
+  var namen = { a: "Geteilter Bildschirm", b: "Tandem-Rad", c: "T aus zwei Hälften", d: "Monitor mit Wechselpfeilen" };
+
+  function symbol(idee, px) {
+    var fassung = px <= 24 ? "klein" : "gross";
+    return '<svg width="' + px + '" height="' + px + '" aria-hidden="true"><use href="#' + idee + '-' + fassung + '"/></svg>';
+  }
+
+  document.querySelectorAll(".idee").forEach(function (zeile) {
+    var idee = zeile.dataset.idee;
+    zeile.querySelectorAll(".leiste").forEach(function (leiste) {
+      leiste.innerHTML = groessen.map(function (px) {
+        return '<div class="groesse">' + symbol(idee, px) + '<span>' + px + ' px</span></div>';
+      }).join("");
+    });
+  });
+
+  document.querySelectorAll("[data-tm]").forEach(function (tm) {
+    var html = '<div class="kopf"><span>Name</span><span>Status</span><span>Startauswirkung</span></div>';
+    ["a", "b", "c", "d"].forEach(function (idee) {
+      html += '<div class="zeile"><span class="name">' + symbol(idee, 16) + 'Tandem <em>' + namen[idee] + '</em></span><span>Aktiviert</span><span>Gering</span></div>';
+    });
+    tm.innerHTML = html;
+  });
+
+  // Das Icon oben schaltet wie der Hotkey zwischen den beiden Laptops.
+  var schalter = document.getElementById("schalter");
+  var osd = document.getElementById("osd");
+  var seite = null;
+  schalter.addEventListener("click", function () {
+    seite = seite === "links" ? "rechts" : "links";
+    schalter.classList.toggle("an-links", seite === "links");
+    schalter.classList.toggle("an-rechts", seite === "rechts");
+    osd.textContent = seite === "links" ? "Monitor → DisplayPort" : "Monitor → USB-C";
+  });
+</script>
+</body>
+</html>

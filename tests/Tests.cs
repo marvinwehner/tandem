@@ -2,9 +2,16 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 
 public static class Tests
 {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr LoadLibraryEx(string file, IntPtr reserved, uint flags);
+    [DllImport("kernel32.dll")] static extern IntPtr FindResource(IntPtr module, IntPtr name, IntPtr type);
+    [DllImport("kernel32.dll")] static extern bool FreeLibrary(IntPtr module);
+    const uint LOAD_LIBRARY_AS_DATAFILE = 0x2;
+    const int RT_GROUP_ICON = 14;
+
     static int failures;
 
     public static int Main()
@@ -17,6 +24,7 @@ public static class Tests
         Run("Profil: Rollen und eigene Eingänge", ParsesProfiles);
         Run("Kommandozeile: gültige und ungültige Aufrufe", ParsesCommands);
         Run("Logitech: PID und Adresse aus dem HID-Pfad", ParsesHidPaths);
+        Run("Icon: alle Größen in der .ico und als Ressource", ContainsIcon);
         Run("Update: Quellcode bauen, heil und kaputt", BuildsSource);
         Console.WriteLine(failures == 0 ? "Alle Tests bestanden." : failures + " Test(s) fehlgeschlagen.");
         return failures == 0 ? 0 : 1;
@@ -158,6 +166,41 @@ public static class Tests
         IsNull(Logitech.HidPath.Parse(@"\\?\hid#{00001812}_dev_vid&02046d_pid&b359&col01#x"));
     }
 
+    static void ContainsIcon()
+    {
+        string repo = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".."));
+        using (var reader = new BinaryReader(File.OpenRead(Path.Combine(repo, "src", "tandem.ico"))))
+        {
+            reader.ReadInt16();
+            Equal((short)1, reader.ReadInt16()); // Typ Icon
+            int count = reader.ReadInt16();
+            var sizes = new string[count];
+            for (int i = 0; i < count; i++)
+            {
+                byte width = reader.ReadByte();
+                sizes[i] = width == 0 ? "256" : width.ToString();
+                reader.ReadBytes(15);
+            }
+            Equal("16 20 24 32 40 48 64 256", string.Join(" ", sizes));
+        }
+
+        Equal(32, AppIcon.SizeFor(1f));
+        Equal(40, AppIcon.SizeFor(1.25f));
+        Equal(48, AppIcon.SizeFor(1.5f));
+        Equal(64, AppIcon.SizeFor(1.75f));
+        Equal(64, AppIcon.SizeFor(3f));
+        Equal(32, AppIcon.SizeFor(0.5f));
+        foreach (int size in new[] { 32, 40, 48, 64 }) Equal(size, AppIcon.Get(size).Width);
+    }
+
+    static bool HasIconResource(string exe, int id)
+    {
+        IntPtr module = LoadLibraryEx(exe, IntPtr.Zero, LOAD_LIBRARY_AS_DATAFILE);
+        if (module == IntPtr.Zero) return false;
+        try { return FindResource(module, new IntPtr(id), new IntPtr(RT_GROUP_ICON)) != IntPtr.Zero; }
+        finally { FreeLibrary(module); }
+    }
+
     // Baut eine Kopie des eigenen Quellcodes wie der Updater, einmal heil und einmal mit Syntaxfehler.
     static void BuildsSource()
     {
@@ -171,6 +214,7 @@ public static class Tests
 
             string exe = Updater.Build(temp, AppVersion.Parse("9.8.7"), temp);
             Equal("9.8.7", FileVersionInfo.GetVersionInfo(exe).ProductVersion);
+            True(HasIconResource(exe, AppIcon.Win32ResourceId)); // Dialog zeigt das Icon über diese ID
 
             File.AppendAllText(Path.Combine(temp, @"src\Profile.cs"), "kaputt");
             Throws<InvalidOperationException>(() => Updater.Build(temp, AppVersion.Parse("9.8.8"), temp));

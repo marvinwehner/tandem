@@ -91,16 +91,20 @@ public static class Overlay
         return GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out dpiX, out dpiY) == 0 ? dpiX / DefaultDpi : 1f;
     }
 
+    // Icon links, Text rechts daneben, beides vertikal mittig.
     sealed class OsdForm : Form
     {
         readonly Screen screen;
         readonly float scale;
         readonly Label label = new Label();
+        readonly Icon icon; // aus dem Cache von AppIcon, nicht freigeben
+        Point iconPosition;
 
         public OsdForm(string text, Screen screen)
         {
             this.screen = screen;
             scale = ScaleOf(screen);
+            icon = AppIcon.Get(AppIcon.SizeFor(scale));
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             TopMost = true;
@@ -118,10 +122,15 @@ public static class Overlay
         public void SetText(string text)
         {
             int padX = (int)(28 * scale), padY = (int)(18 * scale);
+            int iconSize = icon == null ? 0 : icon.Width;
+            // Mit Icon links und zwischen Icon und Text dasselbe Polster wie oben und unten, sonst wirkt der Rand links zu breit.
+            int textLeft = icon == null ? padX : padY + iconSize + padY;
             label.Text = text;
             Size s = label.PreferredSize;
-            ClientSize = new Size(s.Width + 2 * padX, s.Height + 2 * padY);
-            label.Location = new Point(padX, padY);
+            int contentHeight = Math.Max(s.Height, iconSize);
+            ClientSize = new Size(textLeft + s.Width + padX, contentHeight + 2 * padY);
+            label.Location = new Point(textLeft, padY + (contentHeight - s.Height) / 2);
+            iconPosition = new Point(padY, padY + (contentHeight - iconSize) / 2);
             Rectangle a = screen.WorkingArea;
             Location = new Point(a.Left + (a.Width - Width) / 2, a.Bottom - Height - a.Height / 10);
         }
@@ -129,6 +138,7 @@ public static class Overlay
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
+            if (icon != null) e.Graphics.DrawIcon(icon, iconPosition.X, iconPosition.Y); // ungestreckt
             using (var pen = new Pen(Color.FromArgb(110, 110, 110)))
                 e.Graphics.DrawRectangle(pen, 0, 0, ClientSize.Width - 1, ClientSize.Height - 1);
         }

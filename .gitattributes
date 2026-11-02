@@ -1,2 +1,5 @@
 # Batch-Dateien brauchen CRLF, sonst verschluckt cmd Sprungmarken.
 *.cmd text eol=crlf
+
+# Icons sind Binärdateien, keine Zeilenende-Umwandlung.
+*.ico binary
