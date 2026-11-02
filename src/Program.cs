@@ -1,12 +1,18 @@
 // Tandem: zwei Laptops an einem Monitor. Strg+Alt+K schickt Monitor, Maus und Tastatur zum anderen Laptop.
-// Einstieg: prüft die Kommandozeile und ruft den passenden Ablauf auf.
+// Einstieg: prüft die Kommandozeile, ruft den passenden Ablauf auf und zeigt die Meldungen.
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 
 public static class Program
 {
+    // Wie lange der Installer auf den Hintergrundprozess wartet: Der wartet selbst bis zu 10 s auf den Mutex
+    // und 15 s auf den Hotkey.
+    const int ListenerStartTimeoutMs = 30000;
+    const int StopGraceMs = 10000;
+
     [STAThread]
     public static int Main(string[] args)
     {
@@ -37,11 +43,13 @@ public static class Program
         switch (command.Name)
         {
             case "get":
-                foreach (Ddc.MonitorInput m in Ddc.ReadInputs())
-                    Console.WriteLine(m.Name + ": Eingang = " + m.Value + " (0x" + m.Value.ToString("X2") + ")");
+                using (Ddc ddc = Ddc.Open())
+                    foreach (Ddc.Monitor m in ddc.Monitors)
+                        Console.WriteLine(m.Name + ": Eingang = " + m.Input + " (0x" + m.Input.ToString("X2") + ")");
                 return 0;
             case "set":
-                return Ddc.SetInput(command.Value) ? 0 : 1;
+                using (Ddc ddc = Ddc.Open())
+                    return ddc.SetInput(command.Value) ? 0 : 1;
             case "toggle":
                 return Toggle(command.Profile);
             case "listen":
@@ -53,11 +61,9 @@ public static class Program
                 Console.WriteLine(AppVersion.Current);
                 return 0;
             case "install":
-                Installer.Install(command.Profile, command.Update);
-                return 0;
+                return command.HandOver ? CompleteHandOver(command.Profile) : Install(command.Profile);
             case "uninstall":
-                Installer.Uninstall();
-                return 0;
+                return Uninstall();
             case "update":
                 return RequestUpdate();
             default:
@@ -71,6 +77,7 @@ public static class Program
         bool monitorSet = false;
         Overlay.Run("Umschalten …", () =>
         {
+            Hotkey.WaitForRelease();
             SwitchResult result = Switcher.Toggle(profile);
             monitorSet = result.MonitorSet;
             return result.Describe();
@@ -80,11 +87,54 @@ public static class Program
 
     static void PrintDevices()
     {
-        List<Logitech.DeviceStatus> devices = Logitech.Describe();
+        List<Logitech.DeviceStatus> devices = Logitech.ListDevices();
         if (devices.Count == 0) Console.WriteLine("Keine Logitech-Geräte mit diesem PC verbunden.");
         foreach (Logitech.DeviceStatus d in devices)
             Console.WriteLine(d.Name + " (" + d.Address + "): "
                 + (d.Channel == 0 ? "Easy-Switch nicht erreichbar" : "Kanal " + d.Channel + " von " + d.ChannelCount));
+    }
+
+    static int Install(Profile profile)
+    {
+        StopBackgroundProcess();
+        using (EventWaitHandle ready = Listener.CreateReadySignal())
+        {
+            List<string> notes = Installer.Install(profile);
+            bool running = ready.WaitOne(ListenerStartTimeoutMs);
+            string text = running
+                ? "Tandem " + AppVersion.Current + " ist installiert: " + profile + ".\n\n"
+                    + Hotkey.Name + " schickt Monitor, Maus und Tastatur zum anderen Laptop."
+                : "Tandem " + AppVersion.Current + " ist installiert, läuft aber nicht. Vermutlich ist " + Hotkey.Name
+                    + " von einem anderen Programm belegt, z. B. vom alten MonitorSwitch.\n\nDetails: " + Log.FilePath;
+            foreach (string note in notes) text += "\n\n" + note;
+            if (running) Dialog.Inform(text);
+            else Dialog.Warn(text);
+            return running ? 0 : 1;
+        }
+    }
+
+    // Von der alten Version gestartet: Die wartet auf das Signal des neuen Hintergrundprozesses und beendet sich dann.
+    static int CompleteHandOver(Profile profile)
+    {
+        Installer.Install(profile);
+        Overlay.Run("Tandem " + AppVersion.Current + " ist installiert");
+        return 0;
+    }
+
+    static int Uninstall()
+    {
+        StopBackgroundProcess();
+        bool removed = Installer.Uninstall();
+        Dialog.Inform("Tandem ist deinstalliert.");
+        // Erst nach dem Dialog: cmd löscht den Ordner nach ca. 2 s, dann muss diese exe schon beendet sein.
+        if (!removed) Installer.RemoveFolderAfterExit();
+        return 0;
+    }
+
+    static void StopBackgroundProcess()
+    {
+        Listener.RequestStop();
+        Installer.StopOtherInstances(StopGraceMs);
     }
 
     static int RequestUpdate()
@@ -99,7 +149,7 @@ public static class Program
 public sealed class Command
 {
     public const string Usage =
-        "Tandem.exe listen <rolle>  –  im Hintergrund auf Strg+Alt+K warten (Autostart)\n" +
+        "Tandem.exe listen <rolle>  –  im Hintergrund auf " + Hotkey.Name + " warten (Autostart)\n" +
         "Tandem.exe toggle <rolle>  –  einmal umschalten\n" +
         "Tandem.exe get  –  aktuellen Monitoreingang anzeigen\n" +
         "Tandem.exe set <wert>  –  Monitoreingang setzen (dezimal oder 0x..)\n" +
@@ -110,13 +160,15 @@ public sealed class Command
         "Tandem.exe update  –  sofort nach Updates suchen\n\n" +
         "<rolle>: privat (Monitor an DisplayPort), arbeit (Monitor an USB-C) oder <eigener> <anderer> Eingang";
 
+    const string HandOverFlag = "--handover";
+
     Command() { }
 
     public string Name { get; private set; }
     public Profile Profile { get; private set; }
     public uint Value { get; private set; }
-    // Nur bei install: Die alte Version läuft noch und wartet auf die Übergabe.
-    public bool Update { get; private set; }
+    // Nur bei install: Die alte Version läuft noch und wartet auf die Übergabe (siehe Listener).
+    public bool HandOver { get; private set; }
 
     public static Command Parse(string[] args)
     {
@@ -124,8 +176,8 @@ public sealed class Command
         var command = new Command();
         command.Name = args[0];
         List<string> rest = args.Skip(1).ToList();
-        command.Update = rest.Remove("--update");
-        if (command.Update && command.Name != "install") throw new ArgumentException("--update gibt es nur bei install.");
+        command.HandOver = rest.Remove(HandOverFlag);
+        if (command.HandOver && command.Name != "install") throw new ArgumentException(HandOverFlag + " gibt es nur bei install.");
 
         switch (command.Name)
         {

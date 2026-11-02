@@ -12,6 +12,8 @@ public static class Tests
         Run("Version: Tag und Entwicklungsstand lesen", ParsesVersions);
         Run("Version: nur X.Y.Z vergleichen", ComparesVersions);
         Run("Update: Tag aus der GitHub-Weiterleitung", ReadsRedirect);
+        Run("Update: wann eine Version angeboten wird", DecidesOffer);
+        Run("Umschalten: Ziel-Eingang und Hinweistext", ChoosesTarget);
         Run("Profil: Rollen und eigene Eingänge", ParsesProfiles);
         Run("Kommandozeile: gültige und ungültige Aufrufe", ParsesCommands);
         Run("Logitech: PID und Adresse aus dem HID-Pfad", ParsesHidPaths);
@@ -26,14 +28,14 @@ public static class Tests
         Equal(1, v.Major);
         Equal(2, v.Minor);
         Equal(3, v.Patch);
-        True(v.IsRelease);
+        Equal("", v.Suffix);
         Equal("1.2.3", v.ToString());
         Equal("v1.2.3", v.Tag);
 
         AppVersion dev = AppVersion.Parse("1.2.0-3-gabc1234");
-        False(dev.IsRelease);
+        Equal("3-gabc1234", dev.Suffix);
         Equal("1.2.0-3-gabc1234", dev.ToString());
-        False(AppVersion.Parse("0.0.0-dev").IsRelease);
+        Equal("dev", AppVersion.Parse("0.0.0-dev").Suffix);
         True(AppVersion.Parse("1.2.0").SameAs(AppVersion.Parse("v1.2.0")));
         False(AppVersion.Parse("1.2.0").SameAs(null));
 
@@ -59,7 +61,38 @@ public static class Tests
     {
         Equal("1.2.0", Updater.VersionFromRedirect("https://github.com/marvinwehner/tandem/releases/tag/v1.2.0").ToString());
         IsNull(Updater.VersionFromRedirect("https://github.com/marvinwehner/tandem/releases"));
+        IsNull(Updater.VersionFromRedirect("https://github.com/marvinwehner/tandem/releases/tag/test"));
         IsNull(Updater.VersionFromRedirect(null));
+    }
+
+    static void DecidesOffer()
+    {
+        AppVersion installed = AppVersion.Parse("1.2.0");
+        AppVersion newer = AppVersion.Parse("1.3.0");
+        True(Updater.ShouldOffer(newer, installed, null, false));
+        True(Updater.ShouldOffer(newer, AppVersion.Parse("1.2.0-3-gabc"), null, false));
+        False(Updater.ShouldOffer(null, installed, null, true));
+        False(Updater.ShouldOffer(installed, installed, null, true));
+        False(Updater.ShouldOffer(AppVersion.Parse("1.1.9"), installed, null, true));
+        // Ein gescheitertes Update nur auf ausdrückliche Anfrage noch einmal.
+        False(Updater.ShouldOffer(newer, installed, newer, false));
+        True(Updater.ShouldOffer(newer, installed, newer, true));
+        True(Updater.ShouldOffer(AppVersion.Parse("1.3.1"), installed, newer, false));
+    }
+
+    static void ChoosesTarget()
+    {
+        Profile p = Profile.Privat;
+        Equal(p.Other, Switcher.ChooseTarget(p, p.Own, 2));
+        Equal(p.Other, Switcher.ChooseTarget(p, p.Other, 1)); // Geräte weg: Monitor fest zum anderen Laptop
+        Equal(p.Other, Switcher.ChooseTarget(p, p.Own, 0));
+        Equal(p.Own, Switcher.ChooseTarget(p, p.Other, 0));
+        Equal(p.Own, Switcher.ChooseTarget(p, Profile.Hdmi1, 0));
+
+        Equal("Monitor nicht erreichbar\nMaus + Tastatur bleiben hier", new SwitchResult(false, false, 0, 0).Describe());
+        Equal("Monitor → USB-C\nMaus + Tastatur → anderer Laptop", new SwitchResult(true, true, Profile.UsbC, 2).Describe());
+        Equal("Monitor → DisplayPort", new SwitchResult(true, true, Profile.DisplayPort, 0).Describe());
+        Equal("Monitor ließ sich nicht umschalten", new SwitchResult(true, false, Profile.UsbC, 0).Describe());
     }
 
     static void ParsesProfiles()
@@ -89,11 +122,11 @@ public static class Tests
         Command c = Command.Parse(new[] { "listen", "privat" });
         Equal("listen", c.Name);
         Equal(Profile.Privat, c.Profile);
-        False(c.Update);
+        False(c.HandOver);
 
-        c = Command.Parse(new[] { "install", "arbeit", "--update" });
+        c = Command.Parse(new[] { "install", "arbeit", "--handover" });
         Equal(Profile.Arbeit, c.Profile);
-        True(c.Update);
+        True(c.HandOver);
 
         Equal(0x11u, Command.Parse(new[] { "set", "0x11" }).Value);
         Equal(54u, Command.Parse(new[] { "set", "54" }).Value);
@@ -101,10 +134,12 @@ public static class Tests
 
         Throws<ArgumentException>(() => Command.Parse(new string[0]));
         Throws<ArgumentException>(() => Command.Parse(new[] { "toggle" }));
+        Throws<ArgumentException>(() => Command.Parse(new[] { "install" }));
         Throws<ArgumentException>(() => Command.Parse(new[] { "set" }));
         Throws<ArgumentException>(() => Command.Parse(new[] { "set", "abc" }));
         Throws<ArgumentException>(() => Command.Parse(new[] { "get", "x" }));
-        Throws<ArgumentException>(() => Command.Parse(new[] { "update", "--update" }));
+        Throws<ArgumentException>(() => Command.Parse(new[] { "update", "--handover" }));
+        Throws<ArgumentException>(() => Command.Parse(new[] { "toggle", "privat", "--handover" }));
         Throws<ArgumentException>(() => Command.Parse(new[] { "foo" }));
     }
 
@@ -120,6 +155,7 @@ public static class Tests
 
         IsNull(Logitech.HidPath.Parse(@"\\?\hid#vid_045e&pid_07a5&mi_01#7&1234#{4d1e55b2-f16f-11cf-88cb-001111000030}"));
         IsNull(Logitech.HidPath.Parse(@"\\?\hid#{00001812}_dev_vid&02046d_pid&b359_rev&0010_a1b2"));
+        IsNull(Logitech.HidPath.Parse(@"\\?\hid#{00001812}_dev_vid&02046d_pid&b359&col01#x"));
     }
 
     // Baut eine Kopie des eigenen Quellcodes wie der Updater, einmal heil und einmal mit Syntaxfehler.

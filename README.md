@@ -39,15 +39,13 @@ Sofort prüfen:
 "%LOCALAPPDATA%\Programs\Tandem\Tandem.exe" update
 ```
 
-Ein Build ohne Release-Tag (Entwicklungsstand) prüft nicht automatisch, nur mit `update`.
-
 ## Deinstallieren
 
 ```
 "%LOCALAPPDATA%\Programs\Tandem\Tandem.exe" uninstall
 ```
 
-Entfernt Autostart, Startmenü-Eintrag und den Ordner `%LOCALAPPDATA%\Programs\Tandem`. Den Repo-Klon löschst du selbst.
+Beendet den Hintergrundprozess und entfernt Autostart, Startmenü-Eintrag und den Ordner `%LOCALAPPDATA%\Programs\Tandem`. Den Repo-Klon löschst du selbst.
 
 ## Kommandozeile
 

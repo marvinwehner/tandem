@@ -1,6 +1,7 @@
 // Installiert Tandem für den aktuellen Benutzer, ohne Adminrechte: exe nach %LOCALAPPDATA%\Programs\Tandem,
-// Autostart (Run-Schlüssel) und Startmenü-Eintrag. Ein Update nutzt dieselben Schritte.
+// Autostart (Run-Schlüssel) und Startmenü-Eintrag. Ein Update nutzt dieselben Schritte. Meldungen zeigt der Aufrufer.
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -13,7 +14,7 @@ public static class Installer
 {
     public static readonly string Folder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Programs\Tandem");
-    public static readonly string ExePath = Path.Combine(Folder, "Tandem.exe");
+    static readonly string ExePath = Path.Combine(Folder, "Tandem.exe");
     static readonly string BackupPath = ExePath + ".bak";
     static readonly string StartMenuLink = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Tandem umschalten.lnk");
@@ -23,50 +24,60 @@ public static class Installer
     const string StartupApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
     const string RunValue = "Tandem";
     const string ProcessName = "Tandem";
-    const int StopTimeoutMs = 10000, FileAttempts = 5, FileRetryDelayMs = 500;
+    const int KillTimeoutMs = 5000, FileAttempts = 5, FileRetryDelayMs = 500;
 
-    // Installiert diese exe für die Rolle. Bei einem Update wartet die alte Version auf die Übergabe
-    // (siehe Listener) und wird deshalb nicht beendet.
-    public static void Install(Profile profile, bool update)
+    // Installiert diese exe für die Rolle und startet den Hintergrundprozess. Eine laufende Version muss beendet sein
+    // oder (bei der Übergabe) Hotkey und Mutex schon freigegeben haben. Liefert Hinweise für den User.
+    public static List<string> Install(Profile profile)
     {
-        if (!update) StopRunning();
+        var notes = new List<string>();
         CopySelf();
         SetAutostart(profile);
-        CreateStartMenuLink(profile);
         Start(ExePath, "listen " + profile.ToArguments());
-        Log.Info("Tandem " + AppVersion.Current + " installiert: " + profile + (update ? " (Update)" : ""));
-
-        if (update)
+        // Der Startmenü-Eintrag ist entbehrlich, ein Fehler dort soll die Installation nicht aufhalten.
+        try { CreateStartMenuLink(profile); }
+        catch (Exception ex)
         {
-            Overlay.Run("Tandem " + AppVersion.Current + " ist installiert", null);
-            return;
+            Log.Error("Startmenü-Eintrag ließ sich nicht anlegen", ex);
+            notes.Add("Der Startmenü-Eintrag ließ sich nicht anlegen.");
         }
-        string text = "Tandem " + AppVersion.Current + " ist installiert: " + profile + "."
-            + "\n\nStrg+Alt+K schickt Monitor, Maus und Tastatur zum anderen Laptop.";
         if (IsAutostartDisabled())
-            text += "\n\nAchtung: Der Autostart von Tandem ist im Task-Manager deaktiviert. Dort unter „Autostart-Apps“ wieder aktivieren.";
-        Dialog.Inform(text);
+            notes.Add("Der Autostart von Tandem ist im Task-Manager deaktiviert. Dort unter „Autostart-Apps“ wieder aktivieren.");
+        Log.Info("Tandem " + AppVersion.Current + " installiert: " + profile);
+        return notes;
     }
 
-    // Entfernt Autostart, Startmenü-Eintrag und den Installationsordner samt Protokoll.
-    public static void Uninstall()
+    // Entfernt Autostart, Startmenü-Eintrag und den Installationsordner samt Protokoll. Liefert false, wenn diese exe
+    // selbst im Ordner liegt: Den löscht dann RemoveFolderAfterExit.
+    public static bool Uninstall()
     {
-        StopRunning();
         using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey, true))
             if (key != null) key.DeleteValue(RunValue, false);
         File.Delete(StartMenuLink);
-        Dialog.Inform("Tandem ist deinstalliert.");
-        RemoveFolder();
+        if (!Directory.Exists(Folder)) return true;
+        if (IsInside(Assembly.GetExecutingAssembly().Location, Folder)) return false;
+        Directory.Delete(Folder, true);
+        return true;
+    }
+
+    // Die laufende exe kann ihren eigenen Ordner nicht löschen. Das erledigt cmd, kurz nachdem sie sich beendet hat.
+    public static void RemoveFolderAfterExit()
+    {
+        var start = new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & rmdir /s /q " + Quote(Folder));
+        start.WorkingDirectory = Path.GetTempPath(); // sonst hielte cmd den Ordner selbst fest
+        start.CreateNoWindow = true;
+        start.UseShellExecute = false;
+        Process.Start(start).Dispose();
     }
 
     // Startet die neu gebaute exe als Installer. Sie ersetzt die installierte exe und startet sie.
-    public static void StartUpdate(string newExe, Profile profile)
+    public static void StartHandOver(string newExe, Profile profile)
     {
-        Start(newExe, "install " + profile.ToArguments() + " --update");
+        Start(newExe, "install " + profile.ToArguments() + " --handover");
     }
 
-    // Beendet alle anderen Tandem-Prozesse, nach graceMs notfalls hart. Ein laufendes Umschalten
-    // (Startmenü) bekommt so Zeit, fertig zu werden. Der eigene Prozess bleibt.
+    // Beendet andere Tandem-Prozesse aus dem Installationsordner (auch update\), nach graceMs notfalls hart.
+    // Ein laufendes Umschalten aus dem Startmenü bekommt so Zeit, fertig zu werden. Der eigene Prozess bleibt.
     public static void StopOtherInstances(int graceMs)
     {
         int self = Process.GetCurrentProcess().Id;
@@ -74,37 +85,27 @@ public static class Installer
         {
             using (p)
             {
-                if (p.Id == self) continue;
                 try
                 {
+                    if (p.Id == self || !IsInside(p.MainModule.FileName, Folder)) continue;
                     if (p.WaitForExit(graceMs)) continue;
                     p.Kill();
-                    p.WaitForExit(StopTimeoutMs);
+                    p.WaitForExit(KillTimeoutMs);
                 }
                 catch (InvalidOperationException) { } // schon beendet
-                catch (Win32Exception ex) { Log.Error("Prozess " + p.Id + " ließ sich nicht beenden", ex); }
+                catch (Win32Exception ex) { Log.Error("Prozess " + p.Id + " übersprungen", ex); }
             }
         }
     }
 
-    // Nach einem gescheiterten Update: die vorige exe zurückholen, falls die neue sie schon ersetzt hat.
+    // Nach einer gescheiterten Übergabe: die vorige exe zurückholen, falls die neue sie schon ersetzt hat.
     public static void RestoreBackup()
     {
         string current = AppVersion.Current.ToString();
         if (VersionOf(BackupPath) != current || VersionOf(ExePath) == current) return;
-        try
-        {
-            Retry(() => File.Delete(ExePath));
-            Retry(() => File.Move(BackupPath, ExePath));
-            Log.Info("Sicherung " + current + " wiederhergestellt");
-        }
-        catch (Exception ex) { Log.Error("Sicherung ließ sich nicht wiederherstellen", ex); }
-    }
-
-    static void StopRunning()
-    {
-        Listener.RequestStop();
-        StopOtherInstances(StopTimeoutMs);
+        Retry(() => File.Delete(ExePath));
+        Retry(() => File.Move(BackupPath, ExePath));
+        Log.Info("Sicherung " + current + " wiederhergestellt");
     }
 
     // Kopiert diese exe in den Installationsordner, die bisherige wird zur Sicherung (.bak).
@@ -121,7 +122,13 @@ public static class Installer
             Retry(() => File.Delete(BackupPath));
             Retry(() => File.Move(ExePath, BackupPath));
         }
-        Retry(() => File.Move(next, ExePath));
+        try { Retry(() => File.Move(next, ExePath)); }
+        catch
+        {
+            // Ohne Tandem.exe zeigte der Autostart ins Leere.
+            if (!File.Exists(ExePath) && File.Exists(BackupPath)) File.Move(BackupPath, ExePath);
+            throw;
+        }
     }
 
     static void SetAutostart(Profile profile)
@@ -155,22 +162,7 @@ public static class Installer
         finally { Marshal.FinalReleaseComObject(shell); }
     }
 
-    static void RemoveFolder()
-    {
-        if (!Directory.Exists(Folder)) return;
-        if (!IsInside(Assembly.GetExecutingAssembly().Location, Folder))
-        {
-            Directory.Delete(Folder, true);
-            return;
-        }
-        // Die laufende exe kann ihren eigenen Ordner nicht löschen. Das erledigt cmd, kurz nachdem sie beendet ist.
-        var start = new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 >nul & rmdir /s /q " + Quote(Folder));
-        start.CreateNoWindow = true;
-        start.UseShellExecute = false;
-        Process.Start(start).Dispose();
-    }
-
-    // Arbeitsverzeichnis immer der Installationsordner, sonst bleibt z. B. der update-Ordner gesperrt.
+    // Arbeitsverzeichnis immer der Installationsordner, sonst bliebe z. B. der update-Ordner gesperrt.
     static void Start(string exe, string arguments)
     {
         var start = new ProcessStartInfo(exe, arguments);

@@ -2,6 +2,7 @@
 // Läuft nur einmal (Mutex). Installer und "Tandem.exe update" sprechen ihn über benannte Events an.
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
@@ -11,41 +12,45 @@ public sealed class Listener : ApplicationContext
     const string MutexName = @"Local\Tandem";
     const string StopEventName = @"Local\Tandem.Beenden";
     const string CheckEventName = @"Local\Tandem.Pruefen";
-    const string ReadyEventName = @"Local\Tandem.Bereit"; // setzt eine neue Version, sobald sie Mutex und Hotkey hat
+    // Setzt ein Hintergrundprozess, sobald er Mutex und Hotkey hat. Darauf warten Installer und alte Version.
+    const string ReadyEventName = @"Local\Tandem.Bereit";
 
-    const int HotkeyId = 1, WM_HOTKEY = 0x0312;
-    const uint MOD_ALT = 0x1, MOD_CONTROL = 0x2, MOD_NOREPEAT = 0x4000, VK_K = 0x4B;
-    const int HotkeyAttempts = 30, HotkeyRetryDelayMs = 500;
-    const int MutexTimeoutMs = 10000, HandOverTimeoutMs = 30000, TickMs = 30000;
-    static readonly TimeSpan FirstCheckDelay = TimeSpan.FromMinutes(1);
+    // Beim Start kann eine vorige Instanz noch dabei sein, sich zu beenden (Installer, Update).
+    const int MutexTimeoutMs = 10000;
+    const int HandOverTimeoutMs = 30000;
+    // Ein Umschalten aus dem Startmenü bekommt Zeit, fertig zu werden, bevor hängende Prozesse beendet werden.
+    const int StopGraceMs = 5000;
+    // Kurzer Takt, damit eine offene Update-Frage bald erscheint, wenn jemand an den Laptop zurückkommt.
+    // Fällig ist eine Prüfung nach der Uhrzeit (nextCheck), das übersteht auch den Ruhezustand.
+    const int TickMs = 30000;
+    static readonly TimeSpan FirstCheckDelay = TimeSpan.FromMinutes(1); // Netz ist direkt nach der Anmeldung oft noch nicht da
     static readonly TimeSpan CheckInterval = TimeSpan.FromHours(24);
     static readonly TimeSpan RetryInterval = TimeSpan.FromHours(1);
     static readonly TimeSpan PresenceWindow = TimeSpan.FromMinutes(2);
 
+    enum UpdateState { Idle, Checking, Asking, Updating }
+
     [StructLayout(LayoutKind.Sequential)]
     struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
 
-    [DllImport("user32.dll")] static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint vk);
-    [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr hWnd, int id);
     [DllImport("user32.dll")] static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
 
     readonly Profile profile;
     readonly Mutex mutex;
-    readonly HotkeyWindow window;
+    readonly Hotkey hotkey;
     readonly SynchronizationContext ui;
     readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
     readonly EventWaitHandle stopEvent, checkEvent, readyEvent;
     readonly List<RegisteredWaitHandle> waits = new List<RegisteredWaitHandle>();
 
     bool ownsMutex = true;
-    bool busy;              // Umschalten läuft, weiterer Hotkey würde sofort zurückschalten
-    bool updating;          // Update wird geladen oder übergeben
-    bool checking;          // Update-Prüfung läuft im Hintergrund
-    bool asking;            // Update-Frage ist offen
+    bool busy;                      // Umschalten läuft, ein weiterer Hotkey würde sofort zurückschalten
+    UpdateState state = UpdateState.Idle;
+    bool manualCheckRequested;      // "Tandem.exe update" kam während einer automatischen Prüfung
     DateTime nextCheck = DateTime.UtcNow + FirstCheckDelay;
-    AppVersion pending;     // gefundenes Update, wartet darauf, dass jemand an diesem Laptop arbeitet
-    AppVersion failed;      // gescheitertes Update, bis zum Neustart nicht automatisch erneut anbieten
-    string preparedExe;     // fertig gebautes Update, wartet auf das Ende des Umschaltens
+    AppVersion pending;             // gefundenes Update, wartet darauf, dass jemand an diesem Laptop arbeitet
+    AppVersion failed;              // gescheitertes Update, bis zum Neustart nicht automatisch erneut anbieten
+    string preparedExe;             // fertig gebautes Update, wartet auf das Ende des Umschaltens
     AppVersion preparedVersion;
 
     // Läuft bis zum Beenden. 0 = normal beendet, 1 = konnte nicht starten.
@@ -55,19 +60,19 @@ public sealed class Listener : ApplicationContext
         {
             if (!Acquire(mutex, MutexTimeoutMs))
             {
-                Overlay.Run("Tandem läuft schon", null);
+                Overlay.Run("Tandem läuft schon");
                 return 1;
             }
             using (var listener = new Listener(profile, mutex))
             {
-                if (!listener.RegisterHotkey())
+                if (!listener.hotkey.Register())
                 {
-                    Log.Info("Strg+Alt+K ist belegt, Tandem beendet sich");
-                    Overlay.Run("Strg+Alt+K ist von einem anderen Programm belegt", null);
+                    Log.Info(Hotkey.Name + " ist belegt, Tandem beendet sich");
+                    Overlay.Run(Hotkey.Name + " ist von einem anderen Programm belegt");
                     return 1;
                 }
                 Log.Info("Tandem " + AppVersion.Current + " läuft: " + profile);
-                listener.readyEvent.Set(); // eine alte Version wartet eventuell auf die Übergabe
+                listener.readyEvent.Set();
                 Updater.CleanUp();
                 Application.Run(listener);
             }
@@ -87,13 +92,22 @@ public sealed class Listener : ApplicationContext
         return Signal(CheckEventName);
     }
 
+    // Für den Installer: wird gesetzt, sobald der danach gestartete Hintergrundprozess läuft.
+    // Vor dem Start öffnen, damit das Signal nicht verloren geht. Nicht bei einer Übergabe, da wartet die alte Version.
+    public static EventWaitHandle CreateReadySignal()
+    {
+        var ready = new EventWaitHandle(false, EventResetMode.ManualReset, ReadyEventName);
+        ready.Reset();
+        return ready;
+    }
+
     Listener(Profile profile, Mutex mutex)
     {
         this.profile = profile;
         this.mutex = mutex;
         SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
         ui = SynchronizationContext.Current;
-        window = new HotkeyWindow(OnHotkey);
+        hotkey = new Hotkey(OnHotkey);
         stopEvent = ListenFor(StopEventName, ExitThread);
         checkEvent = ListenFor(CheckEventName, () => CheckForUpdate(true));
         readyEvent = new EventWaitHandle(false, EventResetMode.ManualReset, ReadyEventName);
@@ -105,7 +119,7 @@ public sealed class Listener : ApplicationContext
     protected override void ExitThreadCore()
     {
         timer.Stop();
-        UnregisterHotKey(window.Handle, HotkeyId);
+        hotkey.Unregister();
         ReleaseMutex();
         Log.Info("Tandem " + AppVersion.Current + " beendet");
         base.ExitThreadCore();
@@ -120,7 +134,7 @@ public sealed class Listener : ApplicationContext
             stopEvent.Dispose();
             checkEvent.Dispose();
             readyEvent.Dispose();
-            window.DestroyHandle();
+            hotkey.Dispose();
             ReleaseMutex();
         }
         base.Dispose(disposing);
@@ -128,63 +142,81 @@ public sealed class Listener : ApplicationContext
 
     void OnHotkey()
     {
-        if (busy || updating) return;
+        if (busy) return;
         busy = true;
-        Overlay.Show("Umschalten …", () =>
+        try
         {
-            string text = Switcher.Toggle(profile).Describe();
-            Log.Info("Umgeschaltet: " + text.Replace("\n", ", "));
-            return text;
-        }, () =>
+            Overlay.Show("Umschalten …", () =>
+            {
+                Hotkey.WaitForRelease();
+                string text = Switcher.Toggle(profile).Describe();
+                Log.Info("Umgeschaltet: " + text.Replace("\n", ", "));
+                return text;
+            }, OnSwitched);
+        }
+        catch (Exception ex)
         {
             busy = false;
-            if (preparedExe != null) HandOver();
-        });
+            Log.Error("Hinweisfenster ließ sich nicht öffnen", ex);
+        }
+    }
+
+    void OnSwitched()
+    {
+        busy = false;
+        // Ein Update, das während des Umschaltens fertig wurde, übergibt erst jetzt.
+        // Ein Abbruch mittendrin ließe Monitor und Geräte auseinanderlaufen.
+        if (preparedExe != null) HandOver();
     }
 
     void OnTick()
     {
-        if (busy || updating || checking || asking) return;
+        if (state != UpdateState.Idle) return;
         if (pending != null)
         {
             if (UserIsPresent()) Offer();
-            return;
         }
-        // Entwicklungsstände nur auf Anfrage aktualisieren, sonst überschreibt ein Klick einen Teststand.
-        if (AppVersion.Current.IsRelease && DateTime.UtcNow >= nextCheck) CheckForUpdate(false);
+        else if (DateTime.UtcNow >= nextCheck) CheckForUpdate(false);
     }
 
     void CheckForUpdate(bool manual)
     {
-        if (updating || checking || asking) return;
-        checking = true;
-        ThreadPool.QueueUserWorkItem(state =>
+        if (state == UpdateState.Checking)
+        {
+            manualCheckRequested |= manual;
+            return;
+        }
+        if (state != UpdateState.Idle) return; // Frage oder Update sind schon sichtbar
+        state = UpdateState.Checking;
+        manualCheckRequested = manual;
+        ThreadPool.QueueUserWorkItem(_ =>
         {
             AppVersion latest = null;
             Exception error = null;
             try { latest = Updater.Latest(); }
             catch (Exception ex) { error = ex; }
-            ui.Post(s => OnChecked(latest, error, manual), null);
+            ui.Post(__ => OnChecked(latest, error), null);
         });
     }
 
-    void OnChecked(AppVersion latest, Exception error, bool manual)
+    void OnChecked(AppVersion latest, Exception error)
     {
-        checking = false;
+        bool manual = manualCheckRequested;
+        state = UpdateState.Idle;
+        manualCheckRequested = false;
         if (error != null)
         {
             Log.Error("Update-Prüfung fehlgeschlagen", error);
             nextCheck = DateTime.UtcNow + RetryInterval;
-            if (manual) Overlay.Show("Update-Prüfung fehlgeschlagen\nDetails in tandem.log", null, null);
+            if (manual) Overlay.Show("Update-Prüfung fehlgeschlagen\nDetails in tandem.log");
             return;
         }
         nextCheck = DateTime.UtcNow + CheckInterval;
         Log.Info("Update-Prüfung: " + (latest == null ? "noch kein Release" : "neueste Version " + latest)
             + ", installiert " + AppVersion.Current);
-        // Ein gescheitertes Update nur auf ausdrückliche Anfrage noch einmal versuchen.
-        if (latest == null || !latest.IsNewerThan(AppVersion.Current) || (!manual && latest.SameAs(failed)))
+        if (!Updater.ShouldOffer(latest, AppVersion.Current, failed, manual))
         {
-            if (manual) Overlay.Show("Tandem " + AppVersion.Current + " ist aktuell", null, null);
+            if (manual) Overlay.Show("Tandem " + AppVersion.Current + " ist aktuell");
             return;
         }
         pending = latest;
@@ -195,43 +227,65 @@ public sealed class Listener : ApplicationContext
     {
         AppVersion version = pending;
         pending = null;
-        asking = true;
-        bool yes = Dialog.Ask("Tandem " + version + " ist verfügbar (installiert: " + AppVersion.Current + ")."
-            + "\n\nJetzt aktualisieren? Das dauert nur ein paar Sekunden.");
-        asking = false;
+        state = UpdateState.Asking;
+        bool yes;
+        try
+        {
+            yes = Dialog.Ask("Tandem " + version + " ist verfügbar (installiert: " + AppVersion.Current + ")."
+                + "\n\nJetzt aktualisieren? Das dauert nur ein paar Sekunden.");
+        }
+        finally { state = UpdateState.Idle; }
         if (yes) InstallUpdate(version);
         else Log.Info("Update auf " + version + " abgelehnt");
     }
 
     void InstallUpdate(AppVersion version)
     {
-        updating = true;
+        state = UpdateState.Updating;
         string exe = null;
-        Overlay.Show("Update auf " + version + " wird geladen …", () =>
+        bool offline = false;
+        try
         {
-            try
+            Overlay.Show("Update auf " + version + " wird geladen …", () =>
             {
-                exe = Updater.Prepare(version);
-                return "Update auf " + version + " wird installiert …";
-            }
-            catch (Exception ex)
-            {
-                Log.Error("Update auf " + version + " fehlgeschlagen", ex);
-                return "Update fehlgeschlagen\nDetails in tandem.log";
-            }
-        }, () =>
+                try
+                {
+                    exe = Updater.Prepare(version);
+                    return "Update auf " + version + " wird installiert …";
+                }
+                catch (WebException ex)
+                {
+                    offline = true;
+                    Log.Error("Update auf " + version + " ließ sich nicht laden", ex);
+                    return "Update ließ sich nicht laden\nNeuer Versuch in einer Stunde";
+                }
+                catch (Exception ex)
+                {
+                    Log.Error("Update auf " + version + " fehlgeschlagen", ex);
+                    return "Update fehlgeschlagen\nDetails in tandem.log";
+                }
+            }, () => OnPrepared(version, exe, offline));
+        }
+        catch (Exception ex)
         {
-            if (exe == null)
-            {
-                failed = version;
-                updating = false;
-                return;
-            }
-            preparedExe = exe;
-            preparedVersion = version;
-            // Läuft noch ein Umschalten, übergibt dessen Ende. Ein Abbruch mittendrin ließe Monitor und Geräte auseinanderlaufen.
-            if (!busy) HandOver();
-        });
+            state = UpdateState.Idle;
+            Log.Error("Hinweisfenster ließ sich nicht öffnen", ex);
+        }
+    }
+
+    void OnPrepared(AppVersion version, string exe, bool offline)
+    {
+        if (exe == null)
+        {
+            // Ein Netzfehler ist bald vorbei, ein Build-Fehler nicht: dann diese Version nicht wieder automatisch anbieten.
+            if (offline) nextCheck = DateTime.UtcNow + RetryInterval;
+            else failed = version;
+            state = UpdateState.Idle;
+            return;
+        }
+        preparedExe = exe;
+        preparedVersion = version;
+        if (!busy) HandOver();
     }
 
     // Gibt Hotkey und Mutex frei, startet die neue Version und wartet, bis sie beides hat.
@@ -242,17 +296,17 @@ public sealed class Listener : ApplicationContext
         AppVersion version = preparedVersion;
         preparedExe = null;
         Log.Info("Übergabe an " + version);
-        UnregisterHotKey(window.Handle, HotkeyId);
+        hotkey.Unregister();
         ReleaseMutex();
         readyEvent.Reset();
-        try { Installer.StartUpdate(exe, profile); }
+        try { Installer.StartHandOver(exe, profile); }
         catch (Exception ex)
         {
             Log.Error("Neue Version ließ sich nicht starten", ex);
             TakeBack(version);
             return;
         }
-        waits.Add(ThreadPool.RegisterWaitForSingleObject(readyEvent, (state, timedOut) => ui.Post(s =>
+        waits.Add(ThreadPool.RegisterWaitForSingleObject(readyEvent, (_, timedOut) => ui.Post(__ =>
         {
             if (timedOut) TakeBack(version);
             else ExitThread();
@@ -262,26 +316,19 @@ public sealed class Listener : ApplicationContext
     void TakeBack(AppVersion version)
     {
         Log.Info("Übergabe an " + version + " gescheitert, " + AppVersion.Current + " läuft weiter");
-        Installer.StopOtherInstances(0);
-        Installer.RestoreBackup();
-        ownsMutex = Acquire(mutex, MutexTimeoutMs);
-        bool hotkey = RegisterHotkey();
-        failed = version;
-        updating = false;
-        Dialog.Warn("Update auf " + version + " fehlgeschlagen, Tandem " + AppVersion.Current + " läuft weiter."
-            + (hotkey ? "" : "\nStrg+Alt+K ist gerade belegt, bitte ab- und wieder anmelden.")
-            + "\n\nDetails: " + Log.FilePath);
-    }
-
-    // Eine vorige Instanz oder der Explorer gibt den Hotkey eventuell erst verzögert frei.
-    bool RegisterHotkey()
-    {
-        for (int i = 0; i < HotkeyAttempts; i++)
+        try
         {
-            if (RegisterHotKey(window.Handle, HotkeyId, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_K)) return true;
-            Thread.Sleep(HotkeyRetryDelayMs);
+            Installer.StopOtherInstances(StopGraceMs);
+            Installer.RestoreBackup();
         }
-        return false;
+        catch (Exception ex) { Log.Error("Aufräumen nach gescheiterter Übergabe fehlgeschlagen", ex); }
+        ownsMutex = Acquire(mutex, MutexTimeoutMs);
+        bool registered = hotkey.Register();
+        failed = version;
+        state = UpdateState.Idle;
+        Dialog.Warn("Update auf " + version + " fehlgeschlagen, Tandem " + AppVersion.Current + " läuft weiter."
+            + (registered ? "" : "\n" + Hotkey.Name + " ist gerade belegt, bitte ab- und wieder anmelden.")
+            + "\n\nDetails: " + Log.FilePath);
     }
 
     void ReleaseMutex()
@@ -295,7 +342,7 @@ public sealed class Listener : ApplicationContext
     EventWaitHandle ListenFor(string name, Action action)
     {
         var handle = new EventWaitHandle(false, EventResetMode.AutoReset, name);
-        waits.Add(ThreadPool.RegisterWaitForSingleObject(handle, (state, timedOut) => ui.Post(s => action(), null), null, Timeout.Infinite, false));
+        waits.Add(ThreadPool.RegisterWaitForSingleObject(handle, (_, timedOut) => ui.Post(__ => action(), null), null, Timeout.Infinite, false));
         return handle;
     }
 
@@ -321,25 +368,5 @@ public sealed class Listener : ApplicationContext
         info.cbSize = (uint)Marshal.SizeOf(info);
         if (!GetLastInputInfo(ref info)) return true;
         return unchecked((uint)Environment.TickCount - info.dwTime) < PresenceWindow.TotalMilliseconds;
-    }
-
-    // Unsichtbares Nachrichtenfenster, das WM_HOTKEY empfängt.
-    sealed class HotkeyWindow : NativeWindow
-    {
-        readonly Action onHotkey;
-
-        public HotkeyWindow(Action onHotkey)
-        {
-            this.onHotkey = onHotkey;
-            var cp = new CreateParams();
-            cp.Parent = new IntPtr(-3); // HWND_MESSAGE
-            CreateHandle(cp);
-        }
-
-        protected override void WndProc(ref Message m)
-        {
-            if (m.Msg == WM_HOTKEY) onHotkey();
-            else base.WndProc(ref m);
-        }
     }
 }

@@ -87,6 +87,7 @@ public static class Logitech
     const byte DeviceIndex = 0xFF;       // Gerät direkt per Bluetooth, ohne Empfänger dazwischen
     const byte ErrorFeatureIndex = 0xFF; // Antwort mit Feature-Index 0xFF = HID++-Fehlermeldung
     const byte SoftwareId = 0x0A;        // unterscheidet unsere Antworten von denen anderer Programme
+    const int PayloadOffset = 4;         // Report-ID, Device-Index, Feature-Index, Funktion, dann die Daten
     const int ResponseTimeoutMs = 1000;
 
     // Features und ihre Funktionen
@@ -115,6 +116,8 @@ public static class Logitech
     {
         readonly FileStream stream;
         readonly byte[] input = new byte[LongReportLength];
+        // Ein abgelaufenes ReadAsync lässt sich nicht abbrechen. Es bleibt für die nächste Anfrage stehen,
+        // ein zweites Lesen daneben würde Antworten verschlucken.
         Task<int> pending;
 
         public Device(HidPath path, SafeFileHandle handle)
@@ -137,7 +140,7 @@ public static class Logitech
             b[1] = DeviceIndex;
             b[2] = featureIndex;
             b[3] = (byte)((function << 4) | SoftwareId);
-            Array.Copy(args, 0, b, 4, args.Length);
+            Array.Copy(args, 0, b, PayloadOffset, args.Length);
             stream.Write(b, 0, b.Length);
         }
 
@@ -158,17 +161,20 @@ public static class Logitech
                     pending = null;
                     if (input[0] != LongReportId) continue;
                     if (input[2] == featureIndex && input[3] == fn) return (byte[])input.Clone();
-                    if (input[2] == ErrorFeatureIndex && input[3] == featureIndex && input[4] == fn) return null;
+                    if (input[2] == ErrorFeatureIndex && input[3] == featureIndex && input[PayloadOffset] == fn) return null;
                 }
             }
-            catch (Exception) { return null; }
+            // Gerät weg oder Verbindung abgebrochen: wie keine Antwort behandeln.
+            catch (IOException) { return null; }
+            catch (AggregateException) { return null; }
+            catch (ObjectDisposedException) { return null; }
         }
 
         // Index des Features auf diesem Gerät, 0 wenn es das Feature nicht gibt.
         public byte FeatureIndex(ushort feature)
         {
             byte[] r = Request(RootIndex, RootGetFeature, (byte)(feature >> 8), (byte)feature);
-            return r == null ? (byte)0 : r[4];
+            return r == null ? (byte)0 : r[PayloadOffset];
         }
 
         public string Name()
@@ -176,11 +182,12 @@ public static class Logitech
             byte index = FeatureIndex(DeviceName);
             byte[] count = index == 0 ? null : Request(index, DeviceNameGetCount);
             var sb = new StringBuilder();
-            while (count != null && sb.Length < count[4])
+            int length = count == null ? 0 : count[PayloadOffset];
+            while (sb.Length < length)
             {
                 byte[] part = Request(index, DeviceNameGetName, (byte)sb.Length);
                 if (part == null) break;
-                for (int i = 4; i < LongReportLength && sb.Length < count[4]; i++) sb.Append((char)part[i]);
+                for (int i = PayloadOffset; i < LongReportLength && sb.Length < length; i++) sb.Append((char)part[i]);
             }
             return sb.Length > 0 ? sb.ToString() : "Logitech-Gerät " + Path.Pid;
         }
@@ -190,11 +197,11 @@ public static class Logitech
         {
             byte index = FeatureIndex(ChangeHost);
             byte[] r = index == 0 ? null : Request(index, ChangeHostGetInfo);
-            return r == null ? null : new HostInfo(index, r[4], r[5]);
+            return r == null ? null : new HostInfo(index, r[PayloadOffset], r[PayloadOffset + 1]);
         }
     }
 
-    public static List<DeviceStatus> Describe()
+    public static List<DeviceStatus> ListDevices()
     {
         var result = new List<DeviceStatus>();
         ForEachDevice(d =>
@@ -286,9 +293,10 @@ public static class Logitech
         IntPtr buffer = Marshal.AllocHGlobal(size);
         try
         {
-            Marshal.WriteInt32(buffer, IntPtr.Size == 8 ? 8 : 6); // cbSize von SP_DEVICE_INTERFACE_DETAIL_DATA_W
+            // SP_DEVICE_INTERFACE_DETAIL_DATA_W: cbSize (4 Byte, Wert je nach Packing), danach der Pfad
+            Marshal.WriteInt32(buffer, IntPtr.Size == 8 ? 8 : 6);
             if (!SetupDiGetDeviceInterfaceDetail(set, ref data, buffer, size, out size, IntPtr.Zero)) return null;
-            return Marshal.PtrToStringUni(IntPtr.Add(buffer, 4));
+            return Marshal.PtrToStringUni(IntPtr.Add(buffer, sizeof(int)));
         }
         finally { Marshal.FreeHGlobal(buffer); }
     }

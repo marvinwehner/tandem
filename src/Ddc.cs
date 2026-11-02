@@ -5,18 +5,21 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 
-public static class Ddc
+public sealed class Ddc : IDisposable
 {
-    public sealed class MonitorInput
+    public sealed class Monitor
     {
-        public MonitorInput(string name, uint value)
+        public Monitor(IntPtr handle, string name, uint input)
         {
+            Handle = handle;
             Name = name;
-            Value = value;
+            Input = input;
         }
 
+        public IntPtr Handle { get; private set; }
         public string Name { get; private set; }
-        public uint Value { get; private set; }
+        // Eingang beim Öffnen
+        public uint Input { get; private set; }
     }
 
     delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, IntPtr rect, IntPtr data);
@@ -36,33 +39,59 @@ public static class Ddc
     [DllImport("dxva2.dll")] static extern bool DestroyPhysicalMonitors(uint count, PHYSICAL_MONITOR[] monitors);
 
     const byte VcpInput = 0x60;
+    // DDC/CI ist manchmal unzuverlässig, deshalb mehrere Versuche beim Setzen.
     const int SetAttempts = 3, RetryDelayMs = 200;
 
-    public static List<MonitorInput> ReadInputs()
+    readonly List<PHYSICAL_MONITOR[]> opened = new List<PHYSICAL_MONITOR[]>();
+    readonly List<Monitor> monitors = new List<Monitor>();
+
+    Ddc() { }
+
+    // Öffnet alle Monitore, die ihren Eingang per DDC/CI melden. Gesetzt wird danach über dieselben Handles
+    // ohne erneutes Lesen: Scheiterte ein zweites Lesen, wären Maus und Tastatur schon weg, der Monitor aber nicht.
+    public static Ddc Open()
     {
-        var result = new List<MonitorInput>();
-        ForEachMonitor((handle, name, current) => result.Add(new MonitorInput(name, current)));
-        return result;
+        var ddc = new Ddc();
+        try
+        {
+            ddc.Enumerate();
+            return ddc;
+        }
+        catch
+        {
+            ddc.Dispose();
+            throw;
+        }
     }
 
-    // Setzt den Eingang aller DDC-fähigen Monitore. true, wenn es bei mindestens einem geklappt hat.
-    public static bool SetInput(uint value)
+    public IList<Monitor> Monitors
+    {
+        get { return monitors.AsReadOnly(); }
+    }
+
+    // Setzt den Eingang aller geöffneten Monitore. true, wenn es bei mindestens einem geklappt hat.
+    public bool SetInput(uint value)
     {
         bool anySet = false;
-        ForEachMonitor((handle, name, current) =>
+        foreach (Monitor m in monitors)
         {
-            // DDC/CI ist manchmal unzuverlässig, deshalb mehrere Versuche.
             for (int i = 0; i < SetAttempts; i++)
             {
-                if (SetVCPFeature(handle, VcpInput, value)) { anySet = true; return; }
+                if (SetVCPFeature(m.Handle, VcpInput, value)) { anySet = true; break; }
                 Thread.Sleep(RetryDelayMs);
             }
-        });
+        }
         return anySet;
     }
 
-    // Ruft action mit Handle, Name und aktuellem Eingang für jeden Monitor auf, der den Eingang per DDC/CI meldet.
-    static void ForEachMonitor(Action<IntPtr, string, uint> action)
+    public void Dispose()
+    {
+        foreach (PHYSICAL_MONITOR[] array in opened) DestroyPhysicalMonitors((uint)array.Length, array);
+        opened.Clear();
+        monitors.Clear();
+    }
+
+    void Enumerate()
     {
         var handles = new List<IntPtr>();
         EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (h, dc, r, d) => { handles.Add(h); return true; }, IntPtr.Zero);
@@ -71,18 +100,15 @@ public static class Ddc
         {
             uint count;
             if (!GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out count) || count == 0) continue;
-            var monitors = new PHYSICAL_MONITOR[count];
-            if (!GetPhysicalMonitorsFromHMONITOR(hMonitor, count, monitors)) continue;
-            try
+            var array = new PHYSICAL_MONITOR[count];
+            if (!GetPhysicalMonitorsFromHMONITOR(hMonitor, count, array)) continue;
+            opened.Add(array);
+            foreach (PHYSICAL_MONITOR m in array)
             {
-                foreach (PHYSICAL_MONITOR m in monitors)
-                {
-                    uint current, max;
-                    if (GetVCPFeatureAndVCPFeatureReply(m.hPhysicalMonitor, VcpInput, IntPtr.Zero, out current, out max))
-                        action(m.hPhysicalMonitor, m.description, current);
-                }
+                uint current, max;
+                if (GetVCPFeatureAndVCPFeatureReply(m.hPhysicalMonitor, VcpInput, IntPtr.Zero, out current, out max))
+                    monitors.Add(new Monitor(m.hPhysicalMonitor, m.description, current));
             }
-            finally { DestroyPhysicalMonitors(count, monitors); }
         }
     }
 }

@@ -26,7 +26,6 @@ public sealed class AppVersion
     // leer bei Releases
     public string Suffix { get; private set; }
 
-    public bool IsRelease { get { return Suffix.Length == 0; } }
     public string Tag { get { return "v" + this; } }
 
     public static AppVersion Parse(string text)
@@ -65,7 +64,7 @@ public sealed class AppVersion
     public override string ToString()
     {
         string number = Major + "." + Minor + "." + Patch;
-        return IsRelease ? number : number + "-" + Suffix;
+        return Suffix.Length == 0 ? number : number + "-" + Suffix;
     }
 
     static AppVersion FromAssembly()

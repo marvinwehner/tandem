@@ -33,6 +33,12 @@ public static class Updater
             return VersionFromRedirect(response.Headers[HttpResponseHeader.Location]);
     }
 
+    // Soll latest angeboten werden? Ein gescheitertes Update nur auf ausdrückliche Anfrage noch einmal.
+    public static bool ShouldOffer(AppVersion latest, AppVersion installed, AppVersion failed, bool manual)
+    {
+        return latest != null && latest.IsNewerThan(installed) && (manual || !latest.SameAs(failed));
+    }
+
     // GitHub leitet /releases/latest auf /releases/tag/<tag> weiter, ohne Release auf /releases.
     public static AppVersion VersionFromRedirect(string location)
     {
@@ -85,7 +91,7 @@ public static class Updater
     }
 
     // Inhalt von src\BuildInfo.cs. build.cmd schreibt dieselbe Zeile.
-    public static string BuildInfo(AppVersion version)
+    static string BuildInfo(AppVersion version)
     {
         return "[assembly: System.Reflection.AssemblyInformationalVersion(\"" + version + "\")]\r\n";
     }

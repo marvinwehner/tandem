@@ -3,15 +3,16 @@
 Zwei Laptops an einem Monitor. `Tandem.exe` schickt per Strg+Alt+K Monitor (DDC/CI) und Logitech-Bluetooth-Geräte (HID++) zum anderen Laptop und aktualisiert sich selbst von GitHub. Bedienung und Installation: [README.md](README.md).
 
 ## Aufbau
-Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`, `Updater`) → Oberfläche (`Program`, `Listener`, `Overlay`, `Dialog`). Untere Ebenen kennen keine UI.
-- `src/Program.cs`: Einstieg, `Command.Parse` prüft die Kommandozeile vollständig, zentrale Fehlerbehandlung
+Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`, `Updater`) → Oberfläche (`Program`, `Listener`, `Hotkey`, `Overlay`, `Dialog`). Untere Ebenen kennen keine UI, Meldungen zeigt die Oberfläche. Querschnitt: `Profile`, `AppVersion`, `Log`.
+- `src/Program.cs`: Einstieg, `Command.Parse` prüft die Kommandozeile vollständig, Abläufe für install/uninstall mit Meldungen, zentrale Fehlerbehandlung
 - `src/Profile.cs`: Rollen `privat`/`arbeit` mit eigenem und anderem Monitoreingang, Eingangsnamen
-- `src/Switcher.cs`: Ablauf beim Hotkey (Tasten loslassen, DDC prüfen, Geräte, Monitor), `SwitchResult`
-- `src/Ddc.cs`: Monitoreingang über dxva2 (VCP 0x60)
+- `src/Switcher.cs`: Ablauf beim Umschalten (DDC prüfen, Geräte, Monitor), `ChooseTarget` als reine Regel, `SwitchResult`
+- `src/Ddc.cs`: Monitoreingang über dxva2 (VCP 0x60). `Ddc.Open()` hält die Handles, damit Lesen und Setzen dieselben Monitore treffen
 - `src/Logitech.cs`: HID++ 2.0 über BLE (Usage Page 0xFF43, Long Report 0x11, Device-Index 0xFF), Feature 0x1814 CHANGE_HOST
-- `src/Listener.cs`: Hintergrundprozess mit unsichtbarem Nachrichtenfenster, Mutex `Local\Tandem`, Events `Local\Tandem.Beenden`/`.Pruefen`/`.Bereit`, Update-Takt, Übergabe an neue Versionen
-- `src/Installer.cs`: `install`/`uninstall`, Ordner `%LOCALAPPDATA%\Programs\Tandem`, Autostart `HKCU\...\Run\Tandem`, Startmenü „Tandem umschalten“
-- `src/Updater.cs`: Release prüfen, Quellcode laden, bauen; `src/AppVersion.cs`: Version parsen und vergleichen
+- `src/Listener.cs`: Hintergrundprozess, Mutex `Local\Tandem`, Events `Local\Tandem.Beenden`/`.Pruefen`/`.Bereit`, Update-Takt mit Zustand `UpdateState`, Übergabe an neue Versionen
+- `src/Hotkey.cs`: Strg+Alt+K über ein unsichtbares Nachrichtenfenster, `WaitForRelease` vor dem Gerätewechsel
+- `src/Installer.cs`: Dateien, Autostart `HKCU\...\Run\Tandem`, Startmenü „Tandem umschalten“, Prozesse beenden, Sicherung zurückholen. Ordner `%LOCALAPPDATA%\Programs\Tandem`
+- `src/Updater.cs`: Release prüfen (`ShouldOffer`), Quellcode laden, bauen; `src/AppVersion.cs`: Version parsen und vergleichen
 - `src/Overlay.cs` (Hinweisfenster, Per-Monitor-DPI V2), `src/Dialog.cs` (MessageBox im Vordergrund), `src/Log.cs` (`tandem.log`)
 - `src/tandem.rsp`: csc-Optionen und Quellen, gemeinsam für `build.cmd`, `test.cmd` und den Updater
 - `tests/Tests.cs`: Tests ohne Framework für die reine Logik und den Build
@@ -52,7 +53,7 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 ## Stolpersteine
 - `.lnk`-Hotkeys startet der Explorer erst nach ~3 s, deshalb `listen` mit `RegisterHotKey`
 - Strg+Alt = AltGr auf deutschen Tastaturen: keine Hotkey-Taste mit AltGr-Zeichen. Strg+Alt+M ist auf dem Privatlaptop schon belegt
-- Vor dem Gerätewechsel warten, bis Strg, Alt und K losgelassen sind, sonst bleiben sie auf dem alten Laptop gedrückt
+- Vor dem Gerätewechsel warten, bis Strg, Alt, K und Enter (Startmenü) losgelassen sind, sonst bleiben sie auf diesem Laptop gedrückt
 - Mit dem Framework-csc gebaute Programme sprechen standardmäßig nur SSL3/TLS 1.0. Für GitHub vorher `ServicePointManager.SecurityProtocol = Tls12` setzen. GitHub verlangt außerdem einen `User-Agent`
 - csc: `/target` und `/out` müssen vor den Quelldateien stehen (CS2022), deshalb nicht in die rsp. Pfade in einer rsp gelten relativ zum Arbeitsverzeichnis, nicht zur rsp
 - GitHub: `/releases/latest` leitet auf `/releases/tag/<tag>` weiter, ohne Release auf `/releases`. Das Archiv `archive/refs/tags/<tag>.zip` enthält genau einen Ordner `tandem-<version>`
@@ -65,8 +66,11 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - Update aus Quellcode statt fertiger exe: keine Binärdateien im Repo, keine GitHub Action, csc ist auf jedem Windows. Der Updater ruft csc direkt auf, nicht `build.cmd`, weil Firmenrichtlinien Skripte eher sperren
 - Version = Git-Tag, keine Versionsnummer im Code (`src\BuildInfo.cs` wird beim Bauen erzeugt)
 - Rolle als Argument in Autostart und Startmenü, keine Konfigurationsdatei
-- Übergabe mit Aufpasser: Die alte Version gibt Hotkey und Mutex frei, startet `install --update` der neuen und wartet 30 s auf `Tandem.Bereit`. Sonst beendet sie die neue, holt `.bak` zurück und macht weiter
-- Update-Frage erst, wenn an diesem Laptop in den letzten 2 min Eingaben kamen, Standardknopf „Nein“. Entwicklungsstände prüfen nur auf Anfrage
+- Übergabe mit Aufpasser: Die alte Version gibt Hotkey und Mutex frei, startet `install <rolle> --handover` der neuen und wartet 30 s auf `Tandem.Bereit`. Sonst beendet sie die neue, holt `.bak` zurück und macht weiter. Ein laufendes Umschalten wird vorher abgewartet
+- Update-Frage erst, wenn an diesem Laptop in den letzten 2 min Eingaben kamen, Standardknopf „Nein“
+- Auch Entwicklungsstände prüfen automatisch: `git describe` hängt nach jedem Commit nach dem Tag einen Zusatz an, eine Installation aus `main` hätte sonst nie gefragt
+- Ein gescheiterter Build wird bis zum Neustart nicht wieder angeboten, ein Netzfehler beim Laden nach 1 h schon
+- Der Installer wartet auf `Tandem.Bereit` und meldet, wenn der Hintergrundprozess nicht läuft (z. B. Hotkey belegt)
 - Autostart über den Run-Schlüssel statt `.lnk` im Autostart-Ordner (kein COM)
 - Kein Migrationscode für die alte `MonitorSwitch`-Installation, die gab es nur auf dem Privatlaptop
 
@@ -81,7 +85,7 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 
 ## Offen (Stand 2026-11-02)
 - Erstes Release `v1.1.0` (nach Rückfrage), danach auf beiden Laptops `git pull --tags` und `Installieren.cmd`
-- Privatlaptop: alte Installation von Hand entfernen (`%LOCALAPPDATA%\Programs\MonitorSwitch`, Startmenü „Monitor umschalten“)
+- Privatlaptop: alte Installation von Hand entfernen (`%LOCALAPPDATA%\Programs\MonitorSwitch`, Startmenü „Monitor umschalten“, falls vorhanden `MonitorSwitch.lnk` in `shell:startup` und ein laufender `MonitorSwitch`-Prozess)
 - Am echten Gerät noch ungeprüft: Hotkey im neuen Hintergrundprozess, Doppeldruck, Autostart nach Anmeldung, Update-Übergabe und Rückfall, `uninstall`
 - Arbeitslaptop: noch nicht installiert, DDC über USB-C von dort aus ungetestet
 - Idee File-Share: vorher PowerToys „Mouse Without Borders“ prüfen (Zwischenablage und Dateien zwischen PCs)

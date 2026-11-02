@@ -13,13 +13,17 @@ public static class Overlay
     [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(Point pt, uint flags);
     [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr monitor, int type, out uint dpiX, out uint dpiY);
 
+    static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new IntPtr(-4);
+    const uint MONITOR_DEFAULTTONEAREST = 2;
+    const int MDT_EFFECTIVE_DPI = 0;
+    const float DefaultDpi = 96f;
     const int ResultVisibleMs = 1500;
 
     // Einmal beim Programmstart, vor dem ersten Fenster: Per-Monitor-DPI (V2), damit der Text auf allen
     // Bildschirmen scharf und gleich groß ist.
     public static void InitDpi()
     {
-        if (!SetProcessDpiAwarenessContext(new IntPtr(-4))) SetProcessDPIAware();
+        if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) SetProcessDPIAware();
     }
 
     // Zeigt text auf allen Bildschirmen, führt work im Hintergrund aus, zeigt dessen Ergebnis kurz an,
@@ -60,6 +64,12 @@ public static class Overlay
         worker.Start();
     }
 
+    // Zeigt nur text, ohne Arbeit im Hintergrund.
+    public static void Show(string text)
+    {
+        Show(text, null, null);
+    }
+
     // Wie Show, aber mit eigener Message-Loop, für einzelne Kommandos ohne Hintergrundprozess.
     public static void Run(string text, Func<string> work)
     {
@@ -68,12 +78,17 @@ public static class Overlay
         Application.Run(context);
     }
 
+    public static void Run(string text)
+    {
+        Run(text, null);
+    }
+
     // Skalierung des Bildschirms (1.25 = 125 %). Laptop-Panel und Samsung sind unterschiedlich skaliert.
     static float ScaleOf(Screen screen)
     {
         uint dpiX, dpiY;
-        IntPtr monitor = MonitorFromPoint(new Point(screen.Bounds.Left + 1, screen.Bounds.Top + 1), 2 /* NEAREST */);
-        return GetDpiForMonitor(monitor, 0, out dpiX, out dpiY) == 0 ? dpiX / 96f : 1f;
+        IntPtr monitor = MonitorFromPoint(new Point(screen.Bounds.Left + 1, screen.Bounds.Top + 1), MONITOR_DEFAULTTONEAREST);
+        return GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out dpiX, out dpiY) == 0 ? dpiX / DefaultDpi : 1f;
     }
 
     sealed class OsdForm : Form
