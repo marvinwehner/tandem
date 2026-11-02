@@ -1,0 +1,114 @@
+// Monitoreingang per DDC/CI lesen und setzen (VCP 0x60 "Input Source" über dxva2).
+// Monitore ohne DDC/CI-Eingangsumschaltung (z. B. das Laptop-Panel) werden übersprungen.
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+public sealed class Ddc : IDisposable
+{
+    public sealed class Monitor
+    {
+        public Monitor(IntPtr handle, string name, uint input)
+        {
+            Handle = handle;
+            Name = name;
+            Input = input;
+        }
+
+        public IntPtr Handle { get; private set; }
+        public string Name { get; private set; }
+        // Eingang beim Öffnen
+        public uint Input { get; private set; }
+    }
+
+    delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, IntPtr rect, IntPtr data);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct PHYSICAL_MONITOR
+    {
+        public IntPtr hPhysicalMonitor;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string description;
+    }
+
+    [DllImport("user32.dll")] static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc callback, IntPtr data);
+    [DllImport("dxva2.dll")] static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, out uint count);
+    [DllImport("dxva2.dll", CharSet = CharSet.Unicode)] static extern bool GetPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, uint count, [Out] PHYSICAL_MONITOR[] monitors);
+    [DllImport("dxva2.dll")] static extern bool GetVCPFeatureAndVCPFeatureReply(IntPtr hMonitor, byte code, IntPtr type, out uint current, out uint max);
+    [DllImport("dxva2.dll")] static extern bool SetVCPFeature(IntPtr hMonitor, byte code, uint value);
+    [DllImport("dxva2.dll")] static extern bool DestroyPhysicalMonitors(uint count, PHYSICAL_MONITOR[] monitors);
+
+    const byte VcpInput = 0x60;
+    // DDC/CI ist manchmal unzuverlässig, deshalb mehrere Versuche beim Setzen.
+    const int SetAttempts = 3, RetryDelayMs = 200;
+
+    readonly List<PHYSICAL_MONITOR[]> opened = new List<PHYSICAL_MONITOR[]>();
+    readonly List<Monitor> monitors = new List<Monitor>();
+
+    Ddc() { }
+
+    // Öffnet alle Monitore, die ihren Eingang per DDC/CI melden. Gesetzt wird danach über dieselben Handles
+    // ohne erneutes Lesen: Scheiterte ein zweites Lesen, wären Maus und Tastatur schon weg, der Monitor aber nicht.
+    public static Ddc Open()
+    {
+        var ddc = new Ddc();
+        try
+        {
+            ddc.Enumerate();
+            return ddc;
+        }
+        catch
+        {
+            ddc.Dispose();
+            throw;
+        }
+    }
+
+    public IList<Monitor> Monitors
+    {
+        get { return monitors.AsReadOnly(); }
+    }
+
+    // Setzt den Eingang aller geöffneten Monitore. true, wenn es bei mindestens einem geklappt hat.
+    public bool SetInput(uint value)
+    {
+        bool anySet = false;
+        foreach (Monitor m in monitors)
+        {
+            for (int i = 0; i < SetAttempts; i++)
+            {
+                if (SetVCPFeature(m.Handle, VcpInput, value)) { anySet = true; break; }
+                Thread.Sleep(RetryDelayMs);
+            }
+        }
+        return anySet;
+    }
+
+    public void Dispose()
+    {
+        foreach (PHYSICAL_MONITOR[] array in opened) DestroyPhysicalMonitors((uint)array.Length, array);
+        opened.Clear();
+        monitors.Clear();
+    }
+
+    void Enumerate()
+    {
+        var handles = new List<IntPtr>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (h, dc, r, d) => { handles.Add(h); return true; }, IntPtr.Zero);
+
+        foreach (IntPtr hMonitor in handles)
+        {
+            uint count;
+            if (!GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out count) || count == 0) continue;
+            var array = new PHYSICAL_MONITOR[count];
+            if (!GetPhysicalMonitorsFromHMONITOR(hMonitor, count, array)) continue;
+            opened.Add(array);
+            foreach (PHYSICAL_MONITOR m in array)
+            {
+                uint current, max;
+                if (GetVCPFeatureAndVCPFeatureReply(m.hPhysicalMonitor, VcpInput, IntPtr.Zero, out current, out max))
+                    monitors.Add(new Monitor(m.hPhysicalMonitor, m.description, current));
+            }
+        }
+    }
+}

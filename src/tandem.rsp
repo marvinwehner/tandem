@@ -1,0 +1,11 @@
+# csc-Optionen für Tandem, gemeinsam genutzt von build.cmd, test.cmd und dem Updater.
+# /target und /out gibt der Aufrufer an, sie müssen vor den Quelldateien stehen.
+# Pfade gelten relativ zum Arbeitsverzeichnis, also immer im Repo-Ordner aufrufen.
+/codepage:65001
+/r:System.Windows.Forms.dll
+/r:System.Drawing.dll
+/r:System.Core.dll
+/r:Microsoft.CSharp.dll
+/r:System.IO.Compression.dll
+/r:System.IO.Compression.FileSystem.dll
+src\*.cs
