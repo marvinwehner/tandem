@@ -11,4 +11,9 @@
 # Icon der exe (Explorer, Startmenü, Task-Manager) und dasselbe Icon als Ressource für Hinweisfenster und Meldungen
 /win32icon:src\tandem.ico
 /resource:src\tandem.ico,Tandem.ico
+# Tray-Symbol: helle Hälfte = Laptop, der den Monitor hat
+/resource:src\tray-links.ico,TrayLinks.ico
+/resource:src\tray-rechts.ico,TrayRechts.ico
+# Common Controls 6 für moderne Knöpfe in Menü und Meldungen
+/win32manifest:src\tandem.manifest
 src\*.cs
