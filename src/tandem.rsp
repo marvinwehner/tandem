@@ -8,4 +8,7 @@
 /r:Microsoft.CSharp.dll
 /r:System.IO.Compression.dll
 /r:System.IO.Compression.FileSystem.dll
+# Icon der exe (Explorer, Startmenü, Task-Manager) und dasselbe Icon als Ressource für Hinweisfenster und Meldungen
+/win32icon:src\tandem.ico
+/resource:src\tandem.ico,Tandem.ico
 src\*.cs

@@ -78,4 +78,4 @@ Tandem schreibt ein Protokoll nach `%LOCALAPPDATA%\Programs\Tandem\tandem.log`: 
 
 ## Entwickeln
 
-`build.cmd` baut `Tandem.exe`, `test.cmd` baut und startet die Tests. Aufbau, Regeln und Release-Ablauf stehen in [CLAUDE.md](CLAUDE.md).
+`build.cmd` baut `Tandem.exe`, `test.cmd` baut und startet die Tests, `tools\icon.cmd` zeichnet das App-Icon neu. Aufbau, Regeln und Release-Ablauf stehen in [CLAUDE.md](CLAUDE.md).
