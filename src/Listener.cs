@@ -1,12 +1,14 @@
-// Hintergrundprozess (Autostart): reagiert sofort auf Strg+Alt+K, zeigt das Tray-Symbol und prüft regelmäßig auf
-// Updates. Läuft nur einmal (Mutex). Installer und "Tandem.exe update" sprechen ihn über benannte Events an.
+// Hintergrundprozess (Autostart): reagiert sofort auf Strg+Alt+K und den Mittelklick am Rand, zeigt das Tray-Symbol
+// und prüft regelmäßig auf Updates. Läuft nur einmal (Mutex). Installer und "Tandem.exe update" sprechen ihn über benannte Events an.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 public sealed class Listener : ApplicationContext
 {
@@ -24,6 +26,8 @@ public sealed class Listener : ApplicationContext
     // Kurzer Takt, damit eine offene Update-Frage bald erscheint, wenn jemand an den Laptop zurückkommt.
     // Fällig ist eine Prüfung nach der Uhrzeit (nextCheck), das übersteht auch den Ruhezustand.
     const int TickMs = 30000;
+    // Nach einer Anzeigeänderung bis zu 6 Nachfragen im Abstand von 5 s, bis DDC wieder antwortet.
+    const int EdgeRetryMs = 5000, EdgeRetryCount = 6;
     static readonly TimeSpan FirstCheckDelay = TimeSpan.FromMinutes(1); // Netz ist direkt nach der Anmeldung oft noch nicht da
     static readonly TimeSpan CheckInterval = TimeSpan.FromHours(24);
     static readonly TimeSpan RetryInterval = TimeSpan.FromHours(1);
@@ -67,6 +71,11 @@ public sealed class Listener : ApplicationContext
     string lastSwitch, lastCheck;
     DateTime? lastSwitchAt, lastCheckAt;
 
+    readonly EdgeClick edgeClick;
+    Rectangle? edgeMonitor;         // Bereich des Monitors für den Mittelklick-Rand, null = unbekannt
+    int edgeRetries;                // kurze Nachfragen nach einer Anzeigeänderung, bis der Rand wieder bekannt ist
+    readonly System.Windows.Forms.Timer edgeRetry = new System.Windows.Forms.Timer();
+
     // Läuft bis zum Beenden. 0 = normal beendet, 1 = konnte nicht starten.
     public static int Run(Profile profile)
     {
@@ -86,6 +95,7 @@ public sealed class Listener : ApplicationContext
                     return 1;
                 }
                 Log.Info("Tandem " + AppVersion.Current + " läuft: " + profile);
+                if (!listener.edgeClick.Start()) Log.Info("Mittelklick am Rand ist nicht verfügbar");
                 listener.tray.Show();
                 listener.watch.Poll();
                 listener.readyEvent.Set();
@@ -127,7 +137,16 @@ public sealed class Listener : ApplicationContext
         stopEvent = ListenFor(StopEventName, () => Quit(false));
         checkEvent = ListenFor(CheckEventName, () => CheckForUpdate(true));
         readyEvent = new EventWaitHandle(false, EventResetMode.ManualReset, ReadyEventName);
-        watch = new MonitorWatch(ui, OnMonitorRead);
+        watch = new MonitorWatch(ui, OnReading);
+        edgeClick = new EdgeClick(ui, Toggle);
+        // Nach SetSynchronizationContext abonnieren, dann kommt das Event auf dem UI-Thread an.
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        edgeRetry.Interval = EdgeRetryMs;
+        edgeRetry.Tick += (s, e) =>
+        {
+            edgeRetry.Stop();
+            watch.Poll();
+        };
         tray = new Tray("Tandem " + AppVersion.Current + " · " + profile.Title);
         tray.SwitchRequested += (s, e) => Toggle();
         tray.UpdateCheckRequested += (s, e) => CheckForUpdate(true);
@@ -144,6 +163,7 @@ public sealed class Listener : ApplicationContext
         timer.Stop();
         tray.Hide();
         hotkey.Unregister();
+        edgeClick.Stop();
         ReleaseMutex();
         Log.Info("Tandem " + AppVersion.Current + " beendet");
         base.ExitThreadCore();
@@ -159,6 +179,9 @@ public sealed class Listener : ApplicationContext
             checkEvent.Dispose();
             readyEvent.Dispose();
             tray.Dispose();
+            SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged; // statisches Event, sonst bleibt der Listener daran hängen
+            edgeClick.Dispose();
+            edgeRetry.Dispose();
             hotkey.Dispose();
             ReleaseMutex();
         }
@@ -196,9 +219,11 @@ public sealed class Listener : ApplicationContext
         {
             lastSwitch = result.Describe().Replace("\n", ", ");
             lastSwitchAt = DateTime.Now;
-            if (result.MonitorSet) OnMonitorRead(result.Target);
-            else if (!result.MonitorFound) OnMonitorRead(null);
+            if (result.MonitorSet) ShowMonitor(result.Target);
+            else if (!result.MonitorFound) ShowMonitor(null);
         }
+        // Eine Abfrage während des Umschaltens setzt aus. War der Rand da gerade unbekannt, jetzt nachholen.
+        if (!edgeMonitor.HasValue && !quitting) watch.Poll();
         // Beenden oder ein Update, das während des Umschaltens kam, erst jetzt.
         // Ein Abbruch mittendrin ließe Monitor und Geräte auseinanderlaufen.
         if (quitting) Quit(quitWithNotice);
@@ -218,8 +243,41 @@ public sealed class Listener : ApplicationContext
         else ExitThread();
     }
 
+    // Ergebnis der Abfrage im Hintergrund: Eingang fürs Tray, Fläche für den Mittelklick-Rand.
+    void OnReading(MonitorReading reading)
+    {
+        ShowMonitor(reading.Input);
+        // Antwortet nur DDC nicht (Standby), bleibt der letzte Rand gültig. Sonst ginge der Klick nach dem Aufwachen
+        // bis zur nächsten Abfrage an das Programm unter der Maus. UpdateEdge setzt dabei auch den Hook neu.
+        UpdateEdge(reading.Bounds.HasValue ? reading.Bounds : edgeMonitor);
+        // Nach einer Anzeigeänderung antwortet DDC oft erst nach ein paar Sekunden: dann bald noch einmal fragen.
+        if (!edgeMonitor.HasValue && edgeRetries > 0)
+        {
+            edgeRetries--;
+            edgeRetry.Start();
+        }
+    }
+
+    // Anzeige umgestellt (Auflösung, Anordnung, Monitor ab- oder angesteckt, Aufwachen): Rand erst wieder nach
+    // neuer Abfrage. Bis dahin laufen Mittelklicks durch.
+    void OnDisplaySettingsChanged(object sender, EventArgs e)
+    {
+        UpdateEdge(null);
+        edgeRetries = EdgeRetryCount;
+        watch.Poll();
+    }
+
+    void UpdateEdge(Rectangle? monitor)
+    {
+        Side? side = profile.OtherSide;
+        edgeClick.SetEdge(monitor, side); // setzt dabei auch den Hook neu
+        if (monitor == edgeMonitor) return;
+        edgeMonitor = monitor;
+        Log.Info(EdgeClick.Describe(monitor, side, SystemInformation.VirtualScreen));
+    }
+
     // Vom eigenen Umschalten oder von der Abfrage im Hintergrund. null = Monitor nicht erreichbar.
-    void OnMonitorRead(uint? input)
+    void ShowMonitor(uint? input)
     {
         bool changed = !monitorKnown || monitorInput != input;
         monitorKnown = true;
@@ -410,6 +468,7 @@ public sealed class Listener : ApplicationContext
         Log.Info("Übergabe an " + version);
         tray.Hide(); // die neue Version zeigt ihr eigenes Symbol
         hotkey.Unregister();
+        edgeClick.Stop();
         ReleaseMutex();
         readyEvent.Reset();
         try { Installer.StartHandOver(exe, profile); }
@@ -437,6 +496,7 @@ public sealed class Listener : ApplicationContext
         catch (Exception ex) { Log.Error("Aufräumen nach gescheiterter Übergabe fehlgeschlagen", ex); }
         ownsMutex = Acquire(mutex, MutexTimeoutMs);
         bool registered = hotkey.Register();
+        edgeClick.Start();
         tray.Show();
         failed = version;
         state = UpdateState.Idle;

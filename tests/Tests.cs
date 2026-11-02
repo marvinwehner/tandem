@@ -29,6 +29,8 @@ public static class Tests
         Run("Logitech: PID und Adresse aus dem HID-Pfad", ParsesHidPaths);
         Run("Icon: alle Größen in der .ico und als Ressource", ContainsIcon);
         Run("Tray: Zustand, Texte und Info", DescribesTray);
+        Run("Mittelklick: Rand erkennen und beschreiben", FindsEdge);
+        Run("Mittelklick: was geschluckt wird und wann umgeschaltet", FiltersClicks);
         Run("Update: Quellcode bauen, heil und kaputt", BuildsSource);
         Console.WriteLine(failures == 0 ? "Alle Tests bestanden." : failures + " Test(s) fehlgeschlagen.");
         return failures == 0 ? 0 : 1;
@@ -233,6 +235,49 @@ public static class Tests
         True(info.Contains("Updates: noch nicht geprüft"));
         True(info.Contains("Autostart: im Task-Manager deaktiviert"));
         True(info.Contains(@"Programm: C:\Tandem.exe"));
+    }
+
+    static void FindsEdge()
+    {
+        // Wie auf dem Privatlaptop: Samsung links vom Laptop-Display.
+        var samsung = new System.Drawing.Rectangle(-5120, 6, 5120, 1440);
+        True(EdgeClick.IsOnEdge(new System.Drawing.Point(-5120, 500), samsung, Side.Left));
+        True(EdgeClick.IsOnEdge(new System.Drawing.Point(-5119, 6), samsung, Side.Left));
+        False(EdgeClick.IsOnEdge(new System.Drawing.Point(-5118, 500), samsung, Side.Left));
+        False(EdgeClick.IsOnEdge(new System.Drawing.Point(-5120, 5), samsung, Side.Left));    // über dem Monitor
+        False(EdgeClick.IsOnEdge(new System.Drawing.Point(-5120, 1446), samsung, Side.Left)); // unten exklusiv
+        False(EdgeClick.IsOnEdge(new System.Drawing.Point(-1, 500), samsung, Side.Left));     // rechter Rand zählt nicht
+
+        // Wie vermutlich auf dem Arbeitslaptop: Samsung rechts vom Laptop-Display, rechts exklusiv.
+        var right = new System.Drawing.Rectangle(2560, 0, 5120, 1440);
+        True(EdgeClick.IsOnEdge(new System.Drawing.Point(7679, 700), right, Side.Right));
+        True(EdgeClick.IsOnEdge(new System.Drawing.Point(7678, 700), right, Side.Right));
+        False(EdgeClick.IsOnEdge(new System.Drawing.Point(7677, 700), right, Side.Right));
+        False(EdgeClick.IsOnEdge(new System.Drawing.Point(7680, 700), right, Side.Right));
+
+        var desktop = new System.Drawing.Rectangle(-5120, 0, 7680, 1600);
+        Equal("Mittelklick am linken Rand, x = -5120, außen am Desktop", EdgeClick.Describe(samsung, Side.Left, desktop));
+        True(EdgeClick.Describe(samsung, Side.Right, desktop).Contains("innen"));
+        Equal("Mittelklick am Rand aus", EdgeClick.Describe(null, Side.Left, desktop));
+        Equal("Mittelklick am Rand aus", EdgeClick.Describe(samsung, null, desktop));
+    }
+
+    static void FiltersClicks()
+    {
+        bool switchNow;
+        var filter = new EdgeClick.Filter();
+        // Rand, Rand: beides schlucken, beim Loslassen umschalten
+        True(filter.Swallow(true, true, out switchNow)); False(switchNow);
+        True(filter.Swallow(false, true, out switchNow)); True(switchNow);
+        // Rand, Mitte: beides schlucken, damit die Taste nicht hängt, aber nicht umschalten
+        True(filter.Swallow(true, true, out switchNow));
+        True(filter.Swallow(false, false, out switchNow)); False(switchNow);
+        // Mitte, Rand: beides durchlassen
+        False(filter.Swallow(true, false, out switchNow));
+        False(filter.Swallow(false, true, out switchNow)); False(switchNow);
+        // Mitte, Mitte: durchlassen
+        False(filter.Swallow(true, false, out switchNow));
+        False(filter.Swallow(false, false, out switchNow)); False(switchNow);
     }
 
     // Größen aus dem Verzeichnis einer .ico in src, z. B. "16 20 24 32".

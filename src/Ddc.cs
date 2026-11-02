@@ -2,6 +2,7 @@
 // Monitore ohne DDC/CI-Eingangsumschaltung (z. B. das Laptop-Panel) werden übersprungen.
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Threading;
 
@@ -9,20 +10,26 @@ public sealed class Ddc : IDisposable
 {
     public sealed class Monitor
     {
-        public Monitor(IntPtr handle, string name, uint input)
+        public Monitor(IntPtr handle, string name, uint input, Rectangle bounds)
         {
             Handle = handle;
             Name = name;
             Input = input;
+            Bounds = bounds;
         }
 
         public IntPtr Handle { get; private set; }
         public string Name { get; private set; }
         // Eingang beim Öffnen
         public uint Input { get; private set; }
+        // Fläche auf dem Windows-Desktop, in physischen Pixeln (Per-Monitor-DPI V2, siehe Overlay.InitDpi)
+        public Rectangle Bounds { get; private set; }
     }
 
-    delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, IntPtr rect, IntPtr data);
+    delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, ref RECT rect, IntPtr data);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct RECT { public int Left, Top, Right, Bottom; }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     struct PHYSICAL_MONITOR
@@ -131,10 +138,17 @@ public sealed class Ddc : IDisposable
     void Enumerate()
     {
         var handles = new List<IntPtr>();
-        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (h, dc, r, d) => { handles.Add(h); return true; }, IntPtr.Zero);
-
-        foreach (IntPtr hMonitor in handles)
+        var areas = new List<Rectangle>();
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr h, IntPtr dc, ref RECT r, IntPtr d) =>
         {
+            handles.Add(h);
+            areas.Add(Rectangle.FromLTRB(r.Left, r.Top, r.Right, r.Bottom));
+            return true;
+        }, IntPtr.Zero);
+
+        for (int i = 0; i < handles.Count; i++)
+        {
+            IntPtr hMonitor = handles[i];
             uint count;
             if (!GetNumberOfPhysicalMonitorsFromHMONITOR(hMonitor, out count) || count == 0) continue;
             var array = new PHYSICAL_MONITOR[count];
@@ -144,7 +158,7 @@ public sealed class Ddc : IDisposable
             {
                 uint current, max;
                 if (GetVCPFeatureAndVCPFeatureReply(m.hPhysicalMonitor, VcpInput, IntPtr.Zero, out current, out max))
-                    monitors.Add(new Monitor(m.hPhysicalMonitor, m.description, current));
+                    monitors.Add(new Monitor(m.hPhysicalMonitor, m.description, current, areas[i]));
             }
         }
     }
