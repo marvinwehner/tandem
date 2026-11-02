@@ -1,6 +1,6 @@
-// Symbol im Infobereich der Taskleiste. Die helle Hälfte zeigt, welcher Laptop den Monitor hat (links
-// Privatlaptop an DisplayPort, rechts Arbeitslaptop an USB-C). Das Menü meldet Klicks über Events,
-// die Abläufe dahinter verdrahtet der Listener.
+// Symbol im Infobereich der Taskleiste. Die helle Hälfte zeigt, welcher Laptop den Monitor hat, angeordnet wie auf
+// dem Schreibtisch (links Arbeitslaptop an USB-C, rechts Privatlaptop an DisplayPort). Das Menü meldet Klicks über
+// Events, die Abläufe dahinter verdrahtet der Listener.
 using System;
 using System.Drawing;
 using System.Reflection;
@@ -87,12 +87,12 @@ public sealed class Tray : IDisposable
         menu.Dispose();
     }
 
-    // Links (Bernstein) ist der Privatlaptop an DisplayPort, rechts (Blau) der Arbeitslaptop an USB-C, auf beiden Laptops gleich.
+    // Die Hälfte auf der Seite, auf der der Laptop mit diesem Eingang steht. Auf beiden Laptops gleich.
     public static TrayState StateFor(uint? input)
     {
-        if (input == Profile.Privat.Own) return TrayState.MonitorLeft;
-        if (input == Profile.Arbeit.Own) return TrayState.MonitorRight;
-        return TrayState.Unknown;
+        Profile owner = input == Profile.Privat.Own ? Profile.Privat : input == Profile.Arbeit.Own ? Profile.Arbeit : null;
+        if (owner == null || !owner.Position.HasValue) return TrayState.Unknown;
+        return owner.Position.Value == Side.Left ? TrayState.MonitorLeft : TrayState.MonitorRight;
     }
 
     // Für Menü und Tooltip. known = schon einmal gelesen, input = null heißt nicht erreichbar.

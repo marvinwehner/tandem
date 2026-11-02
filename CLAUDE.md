@@ -1,9 +1,9 @@
 # Tandem
 
-Zwei Laptops an einem Monitor. `Tandem.exe` schickt per Strg+Alt+K Monitor (DDC/CI) und Logitech-Bluetooth-Geräte (HID++) zum anderen Laptop, zeigt im Tray, welcher Laptop den Monitor hat, und aktualisiert sich selbst von GitHub. Bedienung und Installation: [README.md](README.md).
+Zwei Laptops an einem Monitor. `Tandem.exe` schickt per Strg+Alt+K oder Mittelklick am Monitorrand Monitor (DDC/CI) und Logitech-Bluetooth-Geräte (HID++) zum anderen Laptop, zeigt im Tray, welcher Laptop den Monitor hat, und aktualisiert sich selbst von GitHub. Bedienung und Installation: [README.md](README.md).
 
 ## Aufbau
-Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`, `Updater`) → Oberfläche (`Program`, `Listener`, `Hotkey`, `Tray`, `Overlay`, `Dialog`). Untere Ebenen kennen keine UI, Meldungen zeigt die Oberfläche. Querschnitt: `Profile`, `AppVersion`, `AppIcon`, `Log`.
+Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`, `Updater`) → Oberfläche (`Program`, `Listener`, `Hotkey`, `EdgeClick`, `Tray`, `Overlay`, `Dialog`). Untere Ebenen kennen keine UI, Meldungen zeigt die Oberfläche. Querschnitt: `Profile`, `AppVersion`, `AppIcon`, `Log`.
 - `src/Program.cs`: Einstieg, `Command.Parse` prüft die Kommandozeile vollständig, Abläufe für install/uninstall mit Meldungen, zentrale Fehlerbehandlung
 - `src/Profile.cs`: Rollen `privat`/`arbeit` mit eigenem und anderem Monitoreingang, Eingangsnamen
 - `src/Switcher.cs`: Ablauf beim Umschalten (DDC prüfen, Geräte, Monitor), `ChooseTarget` als reine Regel, `SwitchResult`
@@ -12,7 +12,8 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - `src/Listener.cs`: Hintergrundprozess, Mutex `Local\Tandem`, Events `Local\Tandem.Beenden`/`.Pruefen`/`.Bereit`, Update-Takt mit Zustand `UpdateState`, Übergabe an neue Versionen
 - `src/Hotkey.cs`: Strg+Alt+K über ein unsichtbares Nachrichtenfenster, `WaitForRelease` vor dem Gerätewechsel
 - `src/Tray.cs`: Tray-Symbol mit nativem Menü (Umschalten, Updates, Info, Protokoll, Beenden), meldet Klicks per Events. Reine Funktionen `StateFor`, `MonitorText`, `Tooltip`, `InfoText`
-- `src/MonitorWatch.cs`: liest den Monitoreingang im Hintergrund für das Tray-Symbol
+- `src/MonitorWatch.cs`: liest Eingang und Bereich des Monitors im Hintergrund (`MonitorReading`) für Tray-Symbol und Mittelklick-Rand
+- `src/EdgeClick.cs`: Mittelklick am Monitorrand zum anderen Laptop. `WH_MOUSE_LL` auf eigenem Thread, `Filter` entscheidet was geschluckt wird, `IsOnEdge` und `Describe` als reine Funktionen
 - `src/Installer.cs`: Dateien, Autostart `HKCU\...\Run\Tandem`, Startmenü „Tandem umschalten“, Prozesse beenden, Sicherung zurückholen. Ordner `%LOCALAPPDATA%\Programs\Tandem`
 - `src/Updater.cs`: Release prüfen (`ShouldOffer`), Quellcode laden, bauen; `src/AppVersion.cs`: Version parsen und vergleichen
 - `src/Overlay.cs` (Hinweisfenster mit Icon, Per-Monitor-DPI V2), `src/Dialog.cs` (MessageBoxIndirect im Vordergrund, Tandem-Icon bei Hinweis und Frage), `src/Log.cs` (`tandem.log`)
@@ -26,10 +27,11 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 ## Bauen und testen
 - `build.cmd [version]` erzeugt `Tandem.exe` im Repo-Ordner (in `.gitignore`). Version aus `git describe --tags`, ohne Tag `0.0.0-dev`
 - `test.cmd` baut und startet `tests\Tests.exe`. Vor jedem Commit grün halten
-- Gefahrlos, nur lesend: `Tandem.exe get | Out-String`, `Tandem.exe devices | Out-String`, `Tandem.exe version | Out-String` (winexe, Ausgabe nur bei Umleitung)
+- Gefahrlos, nur lesend: `Tandem.exe get | Out-String` (Eingang und Bereich des Monitors), `Tandem.exe devices | Out-String`, `Tandem.exe version | Out-String` (winexe, Ausgabe nur bei Umleitung)
 - Ungültige Aufrufe und Fehler öffnen eine MessageBox und blockieren, bis jemand klickt. In Skripten nur gültige Kommandos aufrufen
 - `set` und `toggle` schalten wirklich um, also den User vorher warnen. Monitor zurück: `set 0x0F` (DP) oder `set 54` (USB-C)
-- `listen` nicht selbst starten: Es belegt Strg+Alt+K, ein Druck des Users schickt dann die Geräte weg
+- `listen` nicht selbst starten: Es belegt Strg+Alt+K und den Mittelklick am Rand, ein Druck oder Klick des Users schickt dann die Geräte weg
+- Mittelklick-Hook ohne Umschalten testen: Probe-Programm mit eigenem `EdgeClick` und einer Zähl-Aktion statt `Toggle`, `Overlay.InitDpi()` zuerst, kleines Fenster am Rand fängt durchgelassene Klicks. Zeiger per `SetCursorPos`, Klick per `SendInput` (absolute Koordinaten treffen den 2-Pixel-Rand nicht sicher). Bewegt den echten Mauszeiger, also vorher den User fragen. Geht nicht bei gesperrtem Bildschirm
 - Logitech-Umschaltung geht nur, wenn die Geräte mit diesem Laptop verbunden sind. Danach sind sie weg, zurück per Easy-Switch-Taste
 - Update-Pfad ohne Release testen: kleines Probe-Programm mit `csc /target:exe /main:Probe /out:... @src\tandem.rsp Probe.cs` aus dem Repo-Ordner, das ein Branch-Archiv (`https://github.com/marvinwehner/tandem/archive/refs/heads/<branch>.zip`) lädt, entpackt und mit `Updater.Build` baut. So am 2026-11-02 verifiziert
 - Tray-Menü ohne Installation ansehen: im Probe-Programm `new Tray(...)`, `Show()`, Menü über die interne Methode `NotifyIcon.ShowContextMenu` öffnen, das Fenster der Klasse `#32768` per `PrintWindow` speichern und mit Esc schließen
@@ -53,6 +55,7 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 
 ## Setup (verifiziert 2026-11-02)
 - Monitor Samsung ViewFinity S9 S95UF (LS49F950U), DDC-Caps-Modell `LEMON25`. VCP 0x60: DP `0x0F`, HDMI 1 `0x11`, HDMI 2 `0x12`, **USB-C `54` (0x36)**. USB-C fehlt in der Caps-Liste, funktioniert aber. DDC geht auch, wenn der eigene Eingang nicht angezeigt wird
+- Aufstellung: links der Arbeitslaptop, in der Mitte der Samsung, rechts der Privatlaptop (`Profile.Position`). Auf dem Privatlaptop liegt der Samsung in Windows bei x = −5120…0 links vom Laptop-Display (2560×1600, primär), sein linker Rand ist der Rand des virtuellen Desktops
 - Privatlaptop (Rolle `privat`, Lenovo 82WM, RTX 4070) an DP, Easy-Switch-Kanal 2. Das USB-Kabel zum Monitor-Hub spielt fürs Umschalten keine Rolle
 - Arbeitslaptop (Rolle `arbeit`) an USB-C, Easy-Switch-Kanal 1
 - Logitech LIFT (PID B031) und ERGO K860 (PID B359) per Bluetooth LE. Logi Options+ läuft parallel und stört nicht
@@ -71,6 +74,10 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - Zeigen Startmenü oder Explorer nach einem Update noch das alte Icon, liegt das am Icon-Cache von Windows (`ie4uinit.exe -show`), nicht am Code
 - Ein eigenes Manifest ersetzt das Standardmanifest von csc ganz, deshalb stehen `asInvoker` und `supportedOS` mit drin. Moderne Knöpfe in `MessageBoxIndirect` bringt nur das Manifest, `Application.EnableVisualStyles` wirkt dort nicht und ist ohne WinForms-Knöpfe überflüssig. Falls es später nötig wird: `SetCompatibleTextRenderingDefault` nicht aufrufen, das ändert die Schrift im Hinweisfenster
 - `NotifyIcon.Text` wirft über 63 Zeichen (`Tray.Tooltip` kürzt). Ein Menü per Linksklick gibt es in WinForms nur über die interne Methode `ShowContextMenu`. `NotifyIcon.Click` kommt auch beim Rechtsklick, deshalb `MouseClick` mit Taste prüfen
+- Low-Level-Maus-Hook: Windows wartet bei jeder Mausbewegung darauf und entfernt ihn still, wenn er länger als `LowLevelHooksTimeout` braucht (z. B. nach dem Ruhezustand). Deshalb eigener Thread, minimale Hook-Prozedur ohne Protokoll und Neusetzen bei jeder Randaktualisierung. Delegate in einem Feld halten (GC), Ausnahmen im Rückruf abfangen (sonst Prozessende). `MSLLHOOKSTRUCT.pt` und das Rechteck aus `EnumDisplayMonitors` sind unter Per-Monitor-DPI V2 beide physische Pixel
+- `SystemEvents.DisplaySettingsChanged` kommt auf dem Thread mit dem SynchronizationContext beim Abonnieren an. Statisches Event, beim Beenden abmelden
+- Logi Options+ kann die mittlere Taste der LIFT umbelegen, Logi Flow nutzt den Bildschirmrand selbst. Beides stört den Mittelklick am Rand
+- Umlaute in Konsolenausgaben kommen bei Umleitung kaputt an (`get`, `devices`). Ausgaben deshalb möglichst ohne Umlaute
 - Windows 11 legt neue Tray-Symbole zuerst in den Überlauf (^). Anheften kann nur der User (Einstellungen › Personalisierung › Taskleiste › Andere Symbole der Taskleiste)
 - Git Credential Manager zeigt eine Kontoauswahl, sobald mehrere GitHub-Konten gespeichert sind. Auf dem Privatlaptop behoben (altes Konto per `git credential-manager github logout <konto>` abgemeldet, `git config --global credential.https://github.com.username marvinwehner`). Git aus Programmen oder Skripten nur mit `GCM_INTERACTIVE=never` und `GIT_TERMINAL_PROMPT=0` aufrufen, sonst erscheinen Fenster oder der Aufruf hängt
 
@@ -86,8 +93,9 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - Der Installer wartet auf `Tandem.Bereit` und meldet, wenn der Hintergrundprozess nicht läuft (z. B. Hotkey belegt)
 - Autostart über den Run-Schlüssel statt `.lnk` im Autostart-Ordner (kein COM)
 - Kein Migrationscode für die alte `MonitorSwitch`-Installation, die gab es nur auf dem Privatlaptop
-- Icon „Geteilter Bildschirm“: ein Monitor, links Bernstein `#F5A524` (Privatlaptop, DisplayPort), rechts Blau `#3D7BF5` (Arbeitslaptop, USB-C), Rahmen in den Farben des Hinweisfensters (`#282828`, `#6E6E6E`). Trägt bei 16 px und im hellen wie dunklen Design. Meldungen zeigen es bei Hinweis und Frage, Warnungen behalten das Windows-Warnsymbol
-- Tray-Symbol: Die helle Hälfte zeigt, welcher Laptop den Monitor hat (links DisplayPort/Privatlaptop, rechts USB-C/Arbeitslaptop, auf beiden Laptops gleich). Natives `ContextMenu` statt `ContextMenuStrip` (Windows-11-Optik, skaliert pro Bildschirm). Info als MessageBox statt eigenem Fenster (halb so viel Code, Protokoll im Menü)
+- Icon „Geteilter Bildschirm“: ein Monitor, wie auf dem Schreibtisch links Blau `#3D7BF5` (Arbeitslaptop, USB-C), rechts Bernstein `#F5A524` (Privatlaptop, DisplayPort). Bis 1.2.0 war es andersherum, `design/icon-board.html` zeigt noch die alte Seite, Rahmen in den Farben des Hinweisfensters (`#282828`, `#6E6E6E`). Trägt bei 16 px und im hellen wie dunklen Design. Meldungen zeigen es bei Hinweis und Frage, Warnungen behalten das Windows-Warnsymbol
+- Mittelklick am Rand: in den äußersten 2 px des Monitors zur Seite des anderen Laptops (`Profile.OtherSide`). Entschieden wird beim Drücken (dann auch das Loslassen schlucken), umgeschaltet beim Loslassen am Rand. Immer an, keine Einstellung. Hook statt Raw Input, weil nur der Hook den Klick schlucken kann. Bei geänderten Anzeigeeinstellungen ist der Rand aus, bis die nächste Abfrage ihn liefert; antwortet nur DDC nicht, bleibt der letzte Rand
+- Tray-Symbol: Die helle Hälfte zeigt, welcher Laptop den Monitor hat (links Arbeitslaptop, rechts Privatlaptop, wie auf dem Schreibtisch und auf beiden Laptops gleich). Natives `ContextMenu` statt `ContextMenuStrip` (Windows-11-Optik, skaliert pro Bildschirm). Info als MessageBox statt eigenem Fenster (halb so viel Code, Protokoll im Menü)
 - Zustand fürs Tray: nach eigenem Umschalten aus dem Ergebnis, sonst alle 30 s per DDC, aber nur, wenn an diesem Laptop in den letzten 2 min Eingaben kamen (kein DDC-Verkehr über Nacht). Ins Protokoll nur bei Wechsel
 - Beenden aus dem Tray ohne Rückfrage, danach Hinweis. Beenden während des Umschaltens (Tray oder Installer) wird bis zum Ende aufgeschoben
 - Die Update-Logik im Listener wurde fürs Tray bewusst nicht umgebaut, solange Übergabe und Rückfall am Gerät ungeprüft sind
@@ -102,7 +110,8 @@ Drei Ebenen: Hardware (`Ddc`, `Logitech`) → Abläufe (`Switcher`, `Installer`,
 - Kommunikation, Commits und Doku auf Deutsch
 
 ## Offen (Stand 2026-11-02)
-- Release `v1.1.0` ist erstellt, die alte MonitorSwitch-Installation auf dem Privatlaptop entfernt. Tandem ist auf keinem Laptop installiert: `git pull --tags`, dann `Installieren.cmd`
-- Am echten Gerät noch ungeprüft: Hotkey im neuen Hintergrundprozess, Doppeldruck, Autostart nach Anmeldung, Update-Übergabe und Rückfall, `uninstall`. Tray: Zustand in beide Richtungen und nach Umschalten vom anderen Laptop, Linksklick, Beenden, genau ein Symbol nach einem Update, Explorer-Neustart, Darstellung bei 125/150 %
-- Arbeitslaptop: noch nicht installiert, DDC über USB-C von dort aus ungetestet
+- Privatlaptop: v1.2.0 am 2026-11-02 installiert. Laut Protokoll laufen Start, Update-Prüfung, Umschalten und die Tray-Zustandserkennung (auch Zurückschalten vom anderen Laptop). Arbeitslaptop: noch nicht installiert (`git pull --tags`, dann `Installieren.cmd`)
+- Am echten Gerät noch ungeprüft: Doppeldruck, Autostart nach Anmeldung, Update-Übergabe und Rückfall, `uninstall`. Tray: Linksklick, Beenden, genau ein Symbol nach einem Update, Explorer-Neustart, Darstellung bei 125/150 %
+- Mittelklick am Rand am Gerät ungeprüft: Rand außen auf dem Arbeitslaptop (Protokoll), Options+ und Logi Flow, Maus flüssig, nach Ruhezustand, Admin-Fenster im Vordergrund, nach Update genau ein Hook
+- Arbeitslaptop: DDC über USB-C von dort aus ungetestet
 - Idee File-Share: vorher PowerToys „Mouse Without Borders“ prüfen (Zwischenablage und Dateien zwischen PCs)

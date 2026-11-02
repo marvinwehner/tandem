@@ -1,6 +1,6 @@
 // Zeichnet das Tandem-Icon „Geteilter Bildschirm“ und schreibt es als .ico. Aufruf über tools\icon.cmd.
 // Dazu zwei Varianten fürs Tray-Symbol, bei denen eine Hälfte gedimmt ist: Die helle Hälfte zeigt, welcher
-// Laptop gerade den Monitor hat (links Privatlaptop, rechts Arbeitslaptop).
+// Laptop gerade den Monitor hat. Wie auf dem Schreibtisch: links Arbeitslaptop (Blau), rechts Privatlaptop (Bernstein).
 // Entwurf und Begründung: design/icon-board.html. Bis 48 px sind die Formen von Hand aufs Pixelraster gesetzt,
 // darüber kommen sie aus dem 64er-Raster des Entwurfs. Bis 64 px als 32-Bit-BMP, 256 px als PNG:
 // So lesen csc, Explorer und System.Drawing.Icon alle Einträge.
@@ -129,8 +129,8 @@ public static class IconGenerator
 
             Fill(g, Frame, l.Bezel, l.BezelRadius);
             Fill(g, Dark, Inset(l.Bezel, l.Border), l.BezelRadius - l.Border);
-            Fill(g, dimLeft ? Dim(Amber) : Amber, l.PaneLeft, l.PaneRadius);
-            Fill(g, dimRight ? Dim(Blue) : Blue, l.PaneRight, l.PaneRadius);
+            Fill(g, dimLeft ? Dim(Blue) : Blue, l.PaneLeft, l.PaneRadius);
+            Fill(g, dimRight ? Dim(Amber) : Amber, l.PaneRight, l.PaneRadius);
         }
         return bitmap;
     }

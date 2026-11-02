@@ -1,6 +1,6 @@
 # Tandem
 
-Zwei Laptops, ein Monitor, eine Maus, eine Tastatur. Mit **Strg+Alt+K** wechselt alles zusammen zum anderen Laptop.
+Zwei Laptops, ein Monitor, eine Maus, eine Tastatur. Mit **Strg+Alt+K** oder einem **Mittelklick am Monitorrand** wechselt alles zusammen zum anderen Laptop.
 
 ## Was beim Hotkey passiert
 
@@ -29,9 +29,20 @@ Auf jedem Laptop einmal:
 
 Der Installer baut `Tandem.exe` aus dem Quellcode (der C#-Compiler gehört zu Windows), kopiert sie nach `%LOCALAPPDATA%\Programs\Tandem`, trägt sie in den Autostart ein und startet sie. Dazu kommt der Startmenü-Eintrag „Tandem umschalten“ zum Umschalten per Klick. Adminrechte braucht es nicht.
 
+## Mittelklick am Rand
+
+Auf dem Schreibtisch steht links der Arbeitslaptop, in der Mitte der Monitor, rechts der Privatlaptop. Schiebst du die Maus auf dem Monitor ganz an den Rand zum anderen Laptop hin und klickst mit der mittleren Taste (Mausrad), schaltet Tandem um, genau wie Strg+Alt+K:
+
+- am Arbeitslaptop: ganz rechts auf dem Monitor
+- am Privatlaptop: ganz links auf dem Monitor
+
+Der Klick erreicht dabei kein anderes Programm. In der Mitte des Bildschirms funktioniert die mittlere Taste wie immer.
+
+Damit die Maus am Rand hängen bleibt, sollte die Anordnung in Windows (Einstellungen › System › Anzeige) zur echten Aufstellung passen: Der Monitor liegt auf der Seite des anderen Laptops außen. Ob das passt, steht im Protokoll. Wenn Logi Options+ die mittlere Taste umbelegt hat oder Logi Flow läuft, funktioniert der Mittelklick nicht.
+
 ## Tray-Symbol
 
-Solange Tandem läuft, steht ein Symbol im Infobereich der Taskleiste. Die helle Hälfte zeigt, welcher Laptop gerade den Monitor hat: links (Bernstein) der Privatlaptop an DisplayPort, rechts (Blau) der Arbeitslaptop an USB-C. Ist das unklar, zum Beispiel weil der Monitor aus ist, leuchten beide.
+Solange Tandem läuft, steht ein Symbol im Infobereich der Taskleiste. Die helle Hälfte zeigt, welcher Laptop gerade den Monitor hat: links (Blau) der Arbeitslaptop an USB-C, rechts (Bernstein) der Privatlaptop an DisplayPort, so wie sie auf dem Schreibtisch stehen. Ist das unklar, zum Beispiel weil der Monitor aus ist, leuchten beide.
 
 Ein Klick öffnet das Menü:
 
@@ -64,7 +75,7 @@ Beendet den Hintergrundprozess und entfernt Autostart, Startmenü-Eintrag und de
 ## Kommandozeile
 
 ```
-Tandem.exe listen <rolle>      im Hintergrund auf Strg+Alt+K warten (Autostart)
+Tandem.exe listen <rolle>      im Hintergrund auf Strg+Alt+K und Mittelklick am Rand warten (Autostart)
 Tandem.exe toggle <rolle>      einmal umschalten (wie der Hotkey)
 Tandem.exe get                 aktuellen Monitoreingang anzeigen
 Tandem.exe set <wert>          Monitoreingang setzen (dezimal oder 0x..)
@@ -77,11 +88,11 @@ Tandem.exe update              sofort nach Updates suchen
 <rolle>: privat, arbeit oder <eigener> <anderer> (Eingangswerte, z. B. 0x0F 54)
 ```
 
-`get`, `devices` und `version` geben nur etwas aus, wenn die Ausgabe umgeleitet wird, z. B. `Tandem.exe get | more`.
+`get` zeigt auch, wo der Monitor auf dem Windows-Desktop liegt. `get`, `devices` und `version` geben nur etwas aus, wenn die Ausgabe umgeleitet wird, z. B. `Tandem.exe get | more`.
 
 ## Fehlersuche
 
-Tandem schreibt ein Protokoll nach `%LOCALAPPDATA%\Programs\Tandem\tandem.log`: Start, Umschalten, Monitor-Wechsel, Update-Prüfungen und Fehler. Öffnen geht auch über das Tray-Menü.
+Tandem schreibt ein Protokoll nach `%LOCALAPPDATA%\Programs\Tandem\tandem.log`: Start, Umschalten, Monitor-Wechsel, wo der Mittelklick-Rand liegt, Update-Prüfungen und Fehler. Öffnen geht auch über das Tray-Menü.
 
 ## Hinweise
 

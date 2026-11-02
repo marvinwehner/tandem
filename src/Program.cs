@@ -45,7 +45,8 @@ public static class Program
             case "get":
                 using (Ddc ddc = Ddc.Open())
                     foreach (Ddc.Monitor m in ddc.Monitors)
-                        Console.WriteLine(m.Name + ": Eingang = " + m.Input + " (0x" + m.Input.ToString("X2") + ")");
+                        Console.WriteLine(m.Name + ": Eingang = " + m.Input + " (0x" + m.Input.ToString("X2") + "), Bereich "
+                            + m.Bounds.X + "," + m.Bounds.Y + " " + m.Bounds.Width + "x" + m.Bounds.Height);
                 return 0;
             case "set":
                 using (Ddc ddc = Ddc.Open())
@@ -149,7 +150,7 @@ public static class Program
 public sealed class Command
 {
     public const string Usage =
-        "Tandem.exe listen <rolle>  –  im Hintergrund auf " + Hotkey.Name + " warten (Autostart)\n" +
+        "Tandem.exe listen <rolle>  –  im Hintergrund auf " + Hotkey.Name + " und Mittelklick am Rand warten (Autostart)\n" +
         "Tandem.exe toggle <rolle>  –  einmal umschalten\n" +
         "Tandem.exe get  –  aktuellen Monitoreingang anzeigen\n" +
         "Tandem.exe set <wert>  –  Monitoreingang setzen (dezimal oder 0x..)\n" +
