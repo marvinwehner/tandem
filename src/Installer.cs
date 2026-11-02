@@ -41,7 +41,7 @@ public static class Installer
             Log.Error("Startmenü-Eintrag ließ sich nicht anlegen", ex);
             notes.Add("Der Startmenü-Eintrag ließ sich nicht anlegen.");
         }
-        if (IsAutostartDisabled())
+        if (GetAutostart() == Autostart.Disabled)
             notes.Add("Der Autostart von Tandem ist im Task-Manager deaktiviert. Dort unter „Autostart-Apps“ wieder aktivieren.");
         Log.Info("Tandem " + AppVersion.Current + " installiert: " + profile);
         return notes;
@@ -137,13 +137,18 @@ public static class Installer
             key.SetValue(RunValue, Quote(ExePath) + " listen " + profile.ToArguments());
     }
 
-    // Der Task-Manager schreibt 02 (an) oder 03 (aus) ins erste Byte.
-    static bool IsAutostartDisabled()
+    public enum Autostart { Active, Disabled, Missing }
+
+    // Missing ohne Run-Eintrag. Den Schalter im Task-Manager merkt sich Windows getrennt davon:
+    // 02 (an) oder 03 (aus) im ersten Byte.
+    public static Autostart GetAutostart()
     {
+        using (RegistryKey run = Registry.CurrentUser.OpenSubKey(RunKey))
+            if (run == null || run.GetValue(RunValue) == null) return Autostart.Missing;
         using (RegistryKey key = Registry.CurrentUser.OpenSubKey(StartupApprovedKey))
         {
             byte[] state = key == null ? null : key.GetValue(RunValue) as byte[];
-            return state != null && state.Length > 0 && (state[0] & 1) == 1;
+            return state != null && state.Length > 0 && (state[0] & 1) == 1 ? Autostart.Disabled : Autostart.Active;
         }
     }
 

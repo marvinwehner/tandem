@@ -41,7 +41,13 @@ public sealed class Ddc : IDisposable
     const byte VcpInput = 0x60;
     // DDC/CI ist manchmal unzuverlässig, deshalb mehrere Versuche beim Setzen.
     const int SetAttempts = 3, RetryDelayMs = 200;
+    // Nur ein Zugriff auf den Monitor zur Zeit, auch über Prozesse hinweg (Hintergrundprozess, Startmenü-toggle).
+    // Sonst kann das Setzen scheitern, wenn gleichzeitig die Zustandsabfrage fürs Tray-Symbol liest.
+    const string GateName = @"Local\Tandem.Ddc";
+    const int GateTimeoutMs = 5000;
 
+    readonly Mutex gate = new Mutex(false, GateName);
+    bool ownsGate;
     readonly List<PHYSICAL_MONITOR[]> opened = new List<PHYSICAL_MONITOR[]>();
     readonly List<Monitor> monitors = new List<Monitor>();
 
@@ -49,11 +55,29 @@ public sealed class Ddc : IDisposable
 
     // Öffnet alle Monitore, die ihren Eingang per DDC/CI melden. Gesetzt wird danach über dieselben Handles
     // ohne erneutes Lesen: Scheiterte ein zweites Lesen, wären Maus und Tastatur schon weg, der Monitor aber nicht.
+    // Wartet bis zu 5 s auf einen anderen Zugriff, danach geht es trotzdem weiter: Umschalten hat Vorrang.
     public static Ddc Open()
+    {
+        return Open(GateTimeoutMs, true);
+    }
+
+    // Wie Open, aber null, wenn gerade ein anderer Zugriff läuft. Für die Zustandsabfrage, die dann eine Runde aussetzt.
+    public static Ddc TryOpen()
+    {
+        return Open(0, false);
+    }
+
+    static Ddc Open(int timeoutMs, bool openWithoutGate)
     {
         var ddc = new Ddc();
         try
         {
+            ddc.ownsGate = Acquire(ddc.gate, timeoutMs);
+            if (!ddc.ownsGate && !openWithoutGate)
+            {
+                ddc.Dispose();
+                return null;
+            }
             ddc.Enumerate();
             return ddc;
         }
@@ -62,6 +86,13 @@ public sealed class Ddc : IDisposable
             ddc.Dispose();
             throw;
         }
+    }
+
+    // Ein abgestürzter Vorgänger hinterlässt einen verwaisten Mutex, der gilt als frei.
+    static bool Acquire(Mutex mutex, int timeoutMs)
+    {
+        try { return mutex.WaitOne(timeoutMs); }
+        catch (AbandonedMutexException) { return true; }
     }
 
     public IList<Monitor> Monitors
@@ -89,6 +120,12 @@ public sealed class Ddc : IDisposable
         foreach (PHYSICAL_MONITOR[] array in opened) DestroyPhysicalMonitors((uint)array.Length, array);
         opened.Clear();
         monitors.Clear();
+        if (ownsGate)
+        {
+            gate.ReleaseMutex();
+            ownsGate = false;
+        }
+        gate.Dispose();
     }
 
     void Enumerate()

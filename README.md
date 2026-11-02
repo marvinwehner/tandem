@@ -29,6 +29,20 @@ Auf jedem Laptop einmal:
 
 Der Installer baut `Tandem.exe` aus dem Quellcode (der C#-Compiler gehört zu Windows), kopiert sie nach `%LOCALAPPDATA%\Programs\Tandem`, trägt sie in den Autostart ein und startet sie. Dazu kommt der Startmenü-Eintrag „Tandem umschalten“ zum Umschalten per Klick. Adminrechte braucht es nicht.
 
+## Tray-Symbol
+
+Solange Tandem läuft, steht ein Symbol im Infobereich der Taskleiste. Die helle Hälfte zeigt, welcher Laptop gerade den Monitor hat: links (Bernstein) der Privatlaptop an DisplayPort, rechts (Blau) der Arbeitslaptop an USB-C. Ist das unklar, zum Beispiel weil der Monitor aus ist, leuchten beide.
+
+Ein Klick öffnet das Menü:
+
+- **Umschalten** – dasselbe wie Strg+Alt+K
+- **Nach Updates suchen**
+- **Info …** – Version, Rolle, Monitor, letztes Umschalten, letzte Update-Prüfung, Autostart, Pfade
+- **Protokoll öffnen**
+- **Beenden** – bis zur nächsten Anmeldung, dann startet Tandem wieder
+
+Windows 11 legt neue Symbole zuerst in den Überlauf (^). Dauerhaft sichtbar wird Tandem unter Einstellungen › Personalisierung › Taskleiste › Andere Symbole der Taskleiste.
+
 ## Updates
 
 Tandem prüft eine Minute nach dem Start und danach täglich, ob es auf GitHub ein neueres Release gibt. Gefragt wird erst, wenn du an diesem Laptop arbeitest, denn sonst zeigt der Monitor gerade den anderen. Nach **Ja** lädt Tandem den Quellcode, baut ihn und startet die neue Version, das dauert ein paar Sekunden. Klappt dabei etwas nicht, läuft die bisherige Version weiter.
@@ -67,7 +81,7 @@ Tandem.exe update              sofort nach Updates suchen
 
 ## Fehlersuche
 
-Tandem schreibt ein Protokoll nach `%LOCALAPPDATA%\Programs\Tandem\tandem.log`: Start, Umschalten, Update-Prüfungen und Fehler.
+Tandem schreibt ein Protokoll nach `%LOCALAPPDATA%\Programs\Tandem\tandem.log`: Start, Umschalten, Monitor-Wechsel, Update-Prüfungen und Fehler. Öffnen geht auch über das Tray-Menü.
 
 ## Hinweise
 
@@ -78,4 +92,4 @@ Tandem schreibt ein Protokoll nach `%LOCALAPPDATA%\Programs\Tandem\tandem.log`: 
 
 ## Entwickeln
 
-`build.cmd` baut `Tandem.exe`, `test.cmd` baut und startet die Tests, `tools\icon.cmd` zeichnet das App-Icon neu. Aufbau, Regeln und Release-Ablauf stehen in [CLAUDE.md](CLAUDE.md).
+`build.cmd` baut `Tandem.exe`, `test.cmd` baut und startet die Tests, `tools\icon.cmd` zeichnet App-Icon und Tray-Varianten neu. Aufbau, Regeln und Release-Ablauf stehen in [CLAUDE.md](CLAUDE.md).

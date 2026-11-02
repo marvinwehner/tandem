@@ -1,4 +1,6 @@
 // Zeichnet das Tandem-Icon „Geteilter Bildschirm“ und schreibt es als .ico. Aufruf über tools\icon.cmd.
+// Dazu zwei Varianten fürs Tray-Symbol, bei denen eine Hälfte gedimmt ist: Die helle Hälfte zeigt, welcher
+// Laptop gerade den Monitor hat (links Privatlaptop, rechts Arbeitslaptop).
 // Entwurf und Begründung: design/icon-board.html. Bis 48 px sind die Formen von Hand aufs Pixelraster gesetzt,
 // darüber kommen sie aus dem 64er-Raster des Entwurfs. Bis 64 px als 32-Bit-BMP, 256 px als PNG:
 // So lesen csc, Explorer und System.Drawing.Icon alle Einträge.
@@ -15,6 +17,8 @@ public static class IconGenerator
     static readonly Color Frame = Color.FromArgb(0x6E, 0x6E, 0x6E); // Rahmen des Hinweisfensters
     static readonly Color Amber = Color.FromArgb(0xF5, 0xA5, 0x24); // Privatlaptop, DisplayPort
     static readonly Color Blue = Color.FromArgb(0x3D, 0x7B, 0xF5);  // Arbeitslaptop, USB-C
+    const float DimmedShare = 0.25f; // gedimmte Hälfte: 25 % Farbe über dem dunklen Rahmen
+    const int MaxTraySize = 32;       // das Tray-Symbol ist höchstens 32 px groß (200 %)
 
     // Maße einer Größe in Pixeln. Rechtecke als { links, oben, rechts, unten }.
     sealed class Layout
@@ -53,15 +57,23 @@ public static class IconGenerator
     {
         if (args.Length != 1)
         {
-            Console.WriteLine("Aufruf: IconGenerator.exe <ziel.ico>");
+            Console.WriteLine("Aufruf: IconGenerator.exe <zielordner>");
             return 2;
         }
-        var images = new List<Bitmap>();
-        foreach (Layout layout in Layouts) images.Add(Draw(layout));
-        WriteIco(args[0], images);
-        foreach (Bitmap image in images) image.Dispose();
-        Console.WriteLine(args[0] + " geschrieben (" + Layouts.Length + " Größen)");
+        Write(Path.Combine(args[0], "tandem.ico"), Layouts, false, false);
+        var trayLayouts = Array.FindAll(Layouts, l => l.Size <= MaxTraySize);
+        Write(Path.Combine(args[0], "tray-links.ico"), trayLayouts, false, true);
+        Write(Path.Combine(args[0], "tray-rechts.ico"), trayLayouts, true, false);
         return 0;
+    }
+
+    static void Write(string file, Layout[] layouts, bool dimLeft, bool dimRight)
+    {
+        var images = new List<Bitmap>();
+        foreach (Layout layout in layouts) images.Add(Draw(layout, dimLeft, dimRight));
+        WriteIco(file, images);
+        foreach (Bitmap image in images) image.Dispose();
+        Console.WriteLine(file + " geschrieben (" + layouts.Length + " Größen)");
     }
 
     static Layout Make(int size, float[] bezel, float bezelRadius, int border, float[] paneLeft, float[] paneRight,
@@ -96,7 +108,7 @@ public static class IconGenerator
         return new[] { r[0] * factor, r[1] * factor, r[2] * factor, r[3] * factor };
     }
 
-    static Bitmap Draw(Layout l)
+    static Bitmap Draw(Layout l, bool dimLeft, bool dimRight)
     {
         var bitmap = new Bitmap(l.Size, l.Size, PixelFormat.Format32bppArgb);
         using (Graphics g = Graphics.FromImage(bitmap))
@@ -117,10 +129,18 @@ public static class IconGenerator
 
             Fill(g, Frame, l.Bezel, l.BezelRadius);
             Fill(g, Dark, Inset(l.Bezel, l.Border), l.BezelRadius - l.Border);
-            Fill(g, Amber, l.PaneLeft, l.PaneRadius);
-            Fill(g, Blue, l.PaneRight, l.PaneRadius);
+            Fill(g, dimLeft ? Dim(Amber) : Amber, l.PaneLeft, l.PaneRadius);
+            Fill(g, dimRight ? Dim(Blue) : Blue, l.PaneRight, l.PaneRadius);
         }
         return bitmap;
+    }
+
+    static Color Dim(Color c)
+    {
+        return Color.FromArgb(
+            (int)(Dark.R + (c.R - Dark.R) * DimmedShare),
+            (int)(Dark.G + (c.G - Dark.G) * DimmedShare),
+            (int)(Dark.B + (c.B - Dark.B) * DimmedShare));
     }
 
     static float[] Inset(float[] r, float by)

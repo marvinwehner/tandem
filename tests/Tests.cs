@@ -8,9 +8,12 @@ public static class Tests
 {
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr LoadLibraryEx(string file, IntPtr reserved, uint flags);
     [DllImport("kernel32.dll")] static extern IntPtr FindResource(IntPtr module, IntPtr name, IntPtr type);
+    [DllImport("kernel32.dll")] static extern uint SizeofResource(IntPtr module, IntPtr resource);
+    [DllImport("kernel32.dll")] static extern IntPtr LoadResource(IntPtr module, IntPtr resource);
+    [DllImport("kernel32.dll")] static extern IntPtr LockResource(IntPtr data);
     [DllImport("kernel32.dll")] static extern bool FreeLibrary(IntPtr module);
     const uint LOAD_LIBRARY_AS_DATAFILE = 0x2;
-    const int RT_GROUP_ICON = 14;
+    const int RT_GROUP_ICON = 14, RT_MANIFEST = 24, ManifestId = 1;
 
     static int failures;
 
@@ -25,6 +28,7 @@ public static class Tests
         Run("Kommandozeile: gültige und ungültige Aufrufe", ParsesCommands);
         Run("Logitech: PID und Adresse aus dem HID-Pfad", ParsesHidPaths);
         Run("Icon: alle Größen in der .ico und als Ressource", ContainsIcon);
+        Run("Tray: Zustand, Texte und Info", DescribesTray);
         Run("Update: Quellcode bauen, heil und kaputt", BuildsSource);
         Console.WriteLine(failures == 0 ? "Alle Tests bestanden." : failures + " Test(s) fehlgeschlagen.");
         return failures == 0 ? 0 : 1;
@@ -168,8 +172,67 @@ public static class Tests
 
     static void ContainsIcon()
     {
+        Equal("16 20 24 32 40 48 64 256", IcoSizes("tandem.ico"));
+        Equal("16 20 24 32", IcoSizes("tray-links.ico"));
+        Equal("16 20 24 32", IcoSizes("tray-rechts.ico"));
+
+        Equal(32, AppIcon.SizeFor(1f));
+        Equal(40, AppIcon.SizeFor(1.25f));
+        Equal(48, AppIcon.SizeFor(1.5f));
+        Equal(64, AppIcon.SizeFor(1.75f));
+        Equal(64, AppIcon.SizeFor(3f));
+        Equal(32, AppIcon.SizeFor(0.5f));
+        foreach (int size in new[] { 32, 40, 48, 64 }) Equal(size, AppIcon.Get(size).Width);
+        foreach (int size in new[] { 16, 20, 24, 32 })
+        {
+            Equal(size, AppIcon.Get(AppIcon.MonitorLeft, size).Width);
+            Equal(size, AppIcon.Get(AppIcon.MonitorRight, size).Width);
+        }
+    }
+
+    static void DescribesTray()
+    {
+        Equal(TrayState.MonitorLeft, Tray.StateFor(Profile.DisplayPort));
+        Equal(TrayState.MonitorRight, Tray.StateFor(Profile.UsbC));
+        Equal(TrayState.Unknown, Tray.StateFor(Profile.Hdmi1));
+        Equal(TrayState.Unknown, Tray.StateFor(null));
+
+        Equal("Monitor noch nicht gelesen", Tray.MonitorText(null, false, Profile.Privat));
+        Equal("Monitor nicht erreichbar", Tray.MonitorText(null, true, Profile.Privat));
+        Equal("Monitor beim Privatlaptop (hier)", Tray.MonitorText(Profile.DisplayPort, true, Profile.Privat));
+        Equal("Monitor beim Arbeitslaptop", Tray.MonitorText(Profile.UsbC, true, Profile.Privat));
+        Equal("Monitor beim Arbeitslaptop (hier)", Tray.MonitorText(Profile.UsbC, true, Profile.Arbeit));
+        Equal("Monitor an HDMI 1", Tray.MonitorText(Profile.Hdmi1, true, Profile.Arbeit));
+
+        Equal("kurz", Tray.Tooltip("kurz"));
+        string tooltip = Tray.Tooltip("Tandem 1.2.0-12-gabcdef0 – Monitor beim Arbeitslaptop (hier) und noch mehr");
+        Equal(63, tooltip.Length);
+        True(tooltip.EndsWith("…"));
+
+        string info = Tray.InfoText(new TrayInfo
+        {
+            Profile = Profile.Privat,
+            Monitor = "Monitor beim Privatlaptop (hier)",
+            MonitorReadAt = new DateTime(2026, 11, 2, 14, 32, 0),
+            LastSwitch = "Monitor → USB-C, Maus + Tastatur → anderer Laptop",
+            LastSwitchAt = new DateTime(2026, 11, 2, 14, 2, 0),
+            Autostart = Installer.Autostart.Disabled,
+            ExePath = @"C:\Tandem.exe",
+            LogPath = @"C:\tandem.log",
+        });
+        True(info.Contains("Privatlaptop: Monitor an DisplayPort, anderer Laptop an USB-C"));
+        True(info.Contains("Monitor beim Privatlaptop (hier), gelesen um 14:32"));
+        True(info.Contains("Letztes Umschalten: 14:02, Monitor → USB-C, Maus + Tastatur → anderer Laptop"));
+        True(info.Contains("Updates: noch nicht geprüft"));
+        True(info.Contains("Autostart: im Task-Manager deaktiviert"));
+        True(info.Contains(@"Programm: C:\Tandem.exe"));
+    }
+
+    // Größen aus dem Verzeichnis einer .ico in src, z. B. "16 20 24 32".
+    static string IcoSizes(string name)
+    {
         string repo = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".."));
-        using (var reader = new BinaryReader(File.OpenRead(Path.Combine(repo, "src", "tandem.ico"))))
+        using (var reader = new BinaryReader(File.OpenRead(Path.Combine(repo, "src", name))))
         {
             reader.ReadInt16();
             Equal((short)1, reader.ReadInt16()); // Typ Icon
@@ -181,23 +244,23 @@ public static class Tests
                 sizes[i] = width == 0 ? "256" : width.ToString();
                 reader.ReadBytes(15);
             }
-            Equal("16 20 24 32 40 48 64 256", string.Join(" ", sizes));
+            return string.Join(" ", sizes);
         }
-
-        Equal(32, AppIcon.SizeFor(1f));
-        Equal(40, AppIcon.SizeFor(1.25f));
-        Equal(48, AppIcon.SizeFor(1.5f));
-        Equal(64, AppIcon.SizeFor(1.75f));
-        Equal(64, AppIcon.SizeFor(3f));
-        Equal(32, AppIcon.SizeFor(0.5f));
-        foreach (int size in new[] { 32, 40, 48, 64 }) Equal(size, AppIcon.Get(size).Width);
     }
 
-    static bool HasIconResource(string exe, int id)
+    // Inhalt einer Win32-Ressource der exe, null wenn es sie nicht gibt.
+    static byte[] Win32Resource(string exe, int id, int type)
     {
         IntPtr module = LoadLibraryEx(exe, IntPtr.Zero, LOAD_LIBRARY_AS_DATAFILE);
-        if (module == IntPtr.Zero) return false;
-        try { return FindResource(module, new IntPtr(id), new IntPtr(RT_GROUP_ICON)) != IntPtr.Zero; }
+        if (module == IntPtr.Zero) return null;
+        try
+        {
+            IntPtr resource = FindResource(module, new IntPtr(id), new IntPtr(type));
+            if (resource == IntPtr.Zero) return null;
+            var bytes = new byte[SizeofResource(module, resource)];
+            Marshal.Copy(LockResource(LoadResource(module, resource)), bytes, 0, bytes.Length);
+            return bytes;
+        }
         finally { FreeLibrary(module); }
     }
 
@@ -214,7 +277,9 @@ public static class Tests
 
             string exe = Updater.Build(temp, AppVersion.Parse("9.8.7"), temp);
             Equal("9.8.7", FileVersionInfo.GetVersionInfo(exe).ProductVersion);
-            True(HasIconResource(exe, AppIcon.Win32ResourceId)); // Dialog zeigt das Icon über diese ID
+            True(Win32Resource(exe, AppIcon.Win32ResourceId, RT_GROUP_ICON) != null); // Dialog zeigt das Icon über diese ID
+            byte[] manifest = Win32Resource(exe, ManifestId, RT_MANIFEST);
+            True(manifest != null && System.Text.Encoding.UTF8.GetString(manifest).Contains("Microsoft.Windows.Common-Controls"));
 
             File.AppendAllText(Path.Combine(temp, @"src\Profile.cs"), "kaputt");
             Throws<InvalidOperationException>(() => Updater.Build(temp, AppVersion.Parse("9.8.8"), temp));
