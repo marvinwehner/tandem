@@ -32,8 +32,18 @@ Zwei Laptops an einem Monitor. `MonitorSwitch.exe` schickt per Strg+Alt+K Monito
 - `.lnk`-Hotkeys startet der Explorer erst nach ~3 s, deshalb `listen` mit `RegisterHotKey`
 - Strg+Alt = AltGr auf deutschen Tastaturen: keine Hotkey-Taste mit AltGr-Zeichen. Strg+Alt+M ist auf Laptop A schon belegt
 - `WaitForKeysReleased` vor dem Gerätewechsel, sonst bleiben Strg/Alt auf dem alten Laptop gedrückt
+- Mit dem Framework-csc gebaute Programme sprechen standardmäßig nur SSL3/TLS 1.0. Für GitHub vorher `ServicePointManager.SecurityProtocol = Tls12` setzen
+- Git Credential Manager zeigt eine Kontoauswahl, sobald mehrere GitHub-Konten gespeichert sind. Auf Laptop A behoben (altes Konto per `git credential-manager github logout <konto>` abgemeldet, `git config --global credential.https://github.com.username marvinwehner`). Git aus Programmen oder Skripten nur mit `GCM_INTERACTIVE=never` und `GIT_TERMINAL_PROMPT=0` aufrufen, sonst erscheinen Fenster oder der Aufruf hängt
+
+## Zusammenarbeit
+- Der User hat Claude erlaubt, diese Datei und die README.md selbstständig aktuell zu halten. Bei jeder Änderung prüfen, ob die Doku betroffen ist, und sie im selben Commit anpassen
+- Erkenntnisse (Hardware-Verhalten, Stolpersteine, Entscheidungen mit Begründung) hier festhalten, nicht im lokalen Claude-Memory: Das gilt nur auf einem Laptop, das Repo ist auf beiden gleich
+- Größere Vorhaben: erst Plan in `PLAN.md`, per Sub-Agents reviewen, dem User vorstellen, nach Freigabe phasenweise umsetzen. Weicht die Umsetzung vom Plan ab, Plan anpassen und die Abweichung nennen
+- Der User legt Wert auf sauberen, wartbaren Code: kleine Klassen mit einer klaren Aufgabe, reine Logik getrennt von Win32-Aufrufen, aber nichts auf Vorrat
+- Kommunikation, Commits und Doku auf Deutsch
 
 ## Offen (Stand 2026-11-02)
 - Installer mit `listen` und Autostart auf Laptop A noch nicht ausgeführt und verifiziert
 - Laptop B: noch nicht installiert, DDC über USB-C von dort aus ungetestet
 - Idee File-Share: vorher PowerToys „Mouse Without Borders“ prüfen (Zwischenablage und Dateien zwischen PCs)
+- Plan für Aufräumen, einen Installer und Auto-Update: [PLAN.md](PLAN.md), freigegeben, Umsetzung läuft
